@@ -12,7 +12,7 @@ static const int32_t frame_sample = 240;
 static const int32_t frame_size   = frame_sample * (bit_length / 8) * channel_num;
 
 static const int32_t proc_size  = frame_size;
-static uint8_t proc_buffer[proc_size];
+static uint8_t proc_buffer[proc_size]; //ここにPCMデータが格納
 
 bool isCaptured = false;
 bool isEnd = false;
@@ -115,6 +115,19 @@ void distortion_filter(int16_t* ptr, int size)
     rs += 2;
   }
 }
+
+//--------------------------------------------------------------------------------
+void saito_filter(int16_t* ptr, int size){
+  //加工処理
+}
+void ohara_filter(int16_t* ptr, int size){
+  //立体音響処理
+}
+void main_filter(int16_t* ptr, int size){
+  saito_filter(ptr, size);
+  ohara_filter(ptr, size);
+}
+//--------------------------------------------------------------------------------
 
 /**
  * @brief clip function
@@ -324,6 +337,7 @@ void setup()
   /* Initialize each objects */
   AsDataDest dst;
   dst.cb = frontend_pcm_callback;
+
   theFrontEnd->init(channel_num, bit_length, frame_sample, AsDataPathCallback, dst);
 
   /* Set rendering volume */
