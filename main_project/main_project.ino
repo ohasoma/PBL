@@ -109,15 +109,15 @@ void loop()
     isCaptured = false;
 
     // ① 可変抵抗の値を読む
-    int valL = analogRead(A0);  // 0〜1023
-    int valR = analogRead(A1);  // 0〜1023
+    int valL = 1023;
+    int valR = 1023;
 
     // ② 0〜1023 → ゲインにマッピング（例：0.0〜2.0倍）
     float gainL = (float)valL / 1023.0f * 2.0f;
     float gainR = (float)valR / 1023.0f * 2.0f;
 
     // ③ 左右の音量を反映
-    //volume_lr((int16_t*)proc_buffer, frame_sample * 2, gainL, gainR);
+    volume_lr((int16_t*)proc_buffer, frame_sample * 2, gainL, gainR);
 
     // ④ 出力
     execute_aframe();
@@ -141,5 +141,3 @@ void volume_lr(int16_t* pcm, int samples, float gainL, float gainR)
     pcm[i + 1] = R;
   }
 }
-
-#プッシュテスト
