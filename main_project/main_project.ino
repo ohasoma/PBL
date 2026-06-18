@@ -8,7 +8,7 @@ OutputMixer* theMixer;
 
 static const int32_t channel_num = AS_CHANNEL_STEREO;
 static const int32_t bit_length = AS_BITLENGTH_16;
-static const int32_t frame_sample = 240;
+static const int32_t frame_sample = 192;
 static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;
 
 static uint8_t proc_buffer[frame_size];
@@ -109,8 +109,8 @@ void loop()
     isCaptured = false;
 
     // ① 可変抵抗の値を読む
-    int valL = analogRead(A0);  // 0〜1023
-    int valR = analogRead(A1);  // 0〜1023
+    int valL = 1023;
+    int valR = 1023;
 
     // ② 0〜1023 → ゲインにマッピング（例：0.0〜2.0倍）
     float gainL = (float)valL / 1023.0f * 2.0f;
@@ -141,4 +141,3 @@ void volume_lr(int16_t* pcm, int samples, float gainL, float gainR)
     pcm[i + 1] = R;
   }
 }
-

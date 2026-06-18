@@ -1,2 +1,1 @@
-arduino IDEで開発中
-マイク入力をそのまま出力するコード 2026/05/21
+voice_effectorを編集する
