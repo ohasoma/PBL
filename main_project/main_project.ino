@@ -8,7 +8,7 @@ OutputMixer* theMixer;
 
 static const int32_t channel_num = AS_CHANNEL_STEREO;
 static const int32_t bit_length = AS_BITLENGTH_16;
-static const int32_t frame_sample = 240;
+static const int32_t frame_sample = 192;
 static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;
 
 static uint8_t proc_buffer[frame_size];
@@ -117,7 +117,7 @@ void loop()
     float gainR = (float)valR / 1023.0f * 2.0f;
 
     // ③ 左右の音量を反映
-    volume_lr((int16_t*)proc_buffer, frame_sample * 2, gainL, gainR);
+    //volume_lr((int16_t*)proc_buffer, frame_sample * 2, gainL, gainR);
 
     // ④ 出力
     execute_aframe();
@@ -142,3 +142,4 @@ void volume_lr(int16_t* pcm, int samples, float gainL, float gainR)
   }
 }
 
+#プッシュテスト
