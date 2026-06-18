@@ -103,21 +103,15 @@ void distortion_filter(int16_t* ptr, int size)
 }
 
 //--------------------------------------------------------------------------------
-void force_mono(int16_t* ptr, int size){
-  int16_t* L = ptr;
-  int16_t* R = ptr + 1;
-
-  for(int i = 0; i < size; i += 4){
-      *R = *L;  // L の値を R にコピーL += 2;
-      R += 2;
-  }
-}
 void saito_filter(int16_t* ptr, int size){
   //加工処理
-  dynamics_modifier(ptr, size);
+  //dynamics_modifier(ptr, size);
+  soft_crip(ptr, size);
+  Serial.println(*ptr);
 }
 
 //-----------------------------加工処理の関数--------------------------------------
+
 void dynamics_modifier(int16_t* ptr, int size){
   float freq = 1.0;
   int16_t *ls = ptr;
@@ -129,8 +123,37 @@ void dynamics_modifier(int16_t* ptr, int size){
 
     tmp = float(*ls);
     *ls = int16_t(tmp * gain);
+    tmp = float(*rs);
     *rs = int16_t(tmp * gain);
 
+    ls += 2;
+    rs += 2;
+  }
+}
+
+void soft_crip(int16_t* ptr, int size){
+  int16_t thresholdplus = 1000;
+  int16_t thresholdminus = -1000;
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    if(*ls > thresholdplus){
+      *ls = thresholdplus;
+    }
+
+    if(*ls < thresholdminus){
+      *ls = thresholdminus;
+    }
+
+    if(*rs > thresholdplus){
+      *rs = thresholdplus;
+    }
+
+    if(*rs < thresholdminus){
+      *rs = thresholdminus;
+    }
+    
     ls += 2;
     rs += 2;
   }
