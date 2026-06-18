@@ -32,7 +32,7 @@ void signal_process(int16_t* ptr, int size)
 {
   static int frame_cnt = 0;
 
-  saito_filter(ptr,size);
+  main_filter(ptr,size);
 
   // if (frame_cnt < 1000) {
   //   ledOn(LED0);
@@ -123,6 +123,15 @@ void distortion_filter(int16_t* ptr, int size)
 }
 
 //--------------------------------------------------------------------------------
+void force_mono(int16_t* ptr, int size){
+  int16_t* L = ptr;
+  int16_t* R = ptr + 1;
+
+  for(int i = 0; i < size; i += 4){
+      *R = *L;  // L の値を R にコピーL += 2;
+      R += 2;
+  }
+}
 void saito_filter(int16_t* ptr, int size){
   //加工処理
 
@@ -146,6 +155,7 @@ void ohara_filter(int16_t* ptr, int size){
   //立体音響処理
 }
 void main_filter(int16_t* ptr, int size){
+  force_mono(ptr,size);
   saito_filter(ptr, size);
   ohara_filter(ptr, size);
 }
