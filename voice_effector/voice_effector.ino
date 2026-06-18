@@ -13,7 +13,7 @@ OutputMixer *theMixer;
 static const int32_t channel_num  = AS_CHANNEL_STEREO;
 static const int32_t bit_length   = AS_BITLENGTH_16;
 static const int32_t frame_sample = 240;
-static const int32_t frame_size   = frame_sample * (bit_length / 8) * channel_num;
+static const int32_t frame_size   = frame_sample * (bit_length / 8) * channel_num; //(=7680)
 
 static const int32_t proc_size  = frame_size;
 static uint8_t proc_buffer[proc_size]; //ここにPCMデータが格納
@@ -152,10 +152,46 @@ void saito_filter(int16_t* ptr, int size){
   }
 }
 void ohara_filter(int16_t* ptr, int size){
-  //立体音響処理
+
+  //パラメータ定義
+  float magnification_L = 1;
+  float magnification_R = 1;
+  float delay_L = 0;
+  float delay_R = 0;
+
+  int16_t *ls = ptr;
+  int16_t *rs = ptr + 1;
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+
+    //音量調整
+    int32_t r = (*rs) * magnification_R;
+    int32_t l = (*ls) * magnification_L;
+    if(r > 32767) r = 32767;
+    if(r < -32768) r = -32768;
+    if(l > 32767) l = 32767;
+    if(l < -32768) l = -32768;
+
+    *rs = (int16_t)r;
+    *ls = (int16_t)l;
+
+    ls += 2;
+    rs += 2;
+  }
 }
+
+void force_mono(int16_t* ptr, int size){
+    int16_t* L = ptr;
+    int16_t* R = ptr + 1;
+
+    for(int i = 0; i < size; i += 4){
+        *R = *L;  // L の値を R にコピー
+        L += 2;
+        R += 2;
+    }
+}
+
 void main_filter(int16_t* ptr, int size){
-  force_mono(ptr,size);
+  force_mono(ptr, size);  //LをRにコピー
   saito_filter(ptr, size);
   ohara_filter(ptr, size);
 }
