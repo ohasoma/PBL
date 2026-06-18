@@ -26,8 +26,7 @@ bool ErrEnd = false;
  */
 void signal_process(int16_t* ptr, int size)
 {
-  force_mono(ptr, size);
-  ohara_filter(ptr, size);
+  main_filter(ptr, size);
 }
 
 /**
@@ -104,16 +103,27 @@ void saito_filter(int16_t* ptr, int size){
   //加工処理
 }
 void ohara_filter(int16_t* ptr, int size){
-  //立体音響処理
+
+  //パラメータ定義
+  float magnification_L = 1;
+  float magnification_R = 1;
+  float delay_L = 0;
+  float delay_R = 0;
+
   int16_t *ls = ptr;
   int16_t *rs = ptr + 1;
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    //lsそのまま　rs２倍
-    int32_t r = (*rs) * 2;
+
+    //音量調整
+    int32_t r = (*rs) * magnification_R;
+    int32_t l = (*ls) * magnification_L;
     if(r > 32767) r = 32767;
     if(r < -32768) r = -32768;
+    if(l > 32767) l = 32767;
+    if(l < -32768) l = -32768;
 
     *rs = (int16_t)r;
+    *ls = (int16_t)l;
 
     ls += 2;
     rs += 2;
