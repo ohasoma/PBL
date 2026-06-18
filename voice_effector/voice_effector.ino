@@ -1,7 +1,11 @@
+// Spresense Arduino Libraries
 #include <FrontEnd.h>
 #include <OutputMixer.h>
 #include <MemoryUtil.h>
 #include <arch/board/board.h>
+
+//Utilities
+#include <math.h>
 
 FrontEnd *theFrontEnd;
 OutputMixer *theMixer;
@@ -28,21 +32,23 @@ void signal_process(int16_t* ptr, int size)
 {
   static int frame_cnt = 0;
 
-  if (frame_cnt < 1000) {
-    ledOn(LED0);
-    rc_filter(ptr, size);
-  } else if (frame_cnt < 2000) {
-    ledOff(LED0);
-    ledOn(LED1);
-    distortion_filter(ptr, size);
-  } else if (frame_cnt < 3000) {
-    ledOff(LED1);
-    ledOn(LED2);
-    /* No filter */
-  } else {
-    ledOff(LED2);
-    frame_cnt = 0;
-  }
+  saito_filter(ptr,size);
+
+  // if (frame_cnt < 1000) {
+  //   ledOn(LED0);
+  //   rc_filter(ptr, size);
+  // } else if (frame_cnt < 2000) {
+  //   ledOff(LED0);
+  //   ledOn(LED1);
+  //   distortion_filter(ptr, size);
+  // } else if (frame_cnt < 3000) {
+  //   ledOff(LED1);
+  //   ledOn(LED2);
+  //   /* No filter */
+  // } else {
+  //   ledOff(LED2);
+  //   frame_cnt = 0;
+  // }
 
   frame_cnt++;
 }
@@ -119,6 +125,22 @@ void distortion_filter(int16_t* ptr, int size)
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t* ptr, int size){
   //加工処理
+
+  //1秒ごとに音量が上下する
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+  float gain = (1.0f + sinf(0.002f * PI * float(millis()))) / 2.0f;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int32_t tmp;
+
+    tmp = float(*ls);
+    *ls = int16_t(tmp * gain);
+    *rs = int16_t(tmp * gain);
+
+    ls += 2;
+    rs += 2;
+  }
 }
 void ohara_filter(int16_t* ptr, int size){
   //立体音響処理
