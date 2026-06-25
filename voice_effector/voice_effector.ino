@@ -22,6 +22,14 @@ bool isCaptured = false;
 bool isEnd = false;
 bool ErrEnd = false;
 
+struct ProcessConfig {
+  bool gain_amp_anabled;
+  bool dynamics_modifier_enebled;
+  bool soft_crip_enebled;
+};
+
+ProcessConfig processConfig;
+
 /**
  * @brief Sample singnal Processing function
  *
@@ -115,9 +123,15 @@ void distortion_filter(int16_t *ptr, int size) {
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t *ptr, int size) {
   //加工処理
-  gain_amp(ptr, size);
-  //dynamics_modifier(ptr, size);
-  //soft_crip(ptr, size);
+  if (processConfig.gain_amp_anabled) {
+    gain_amp(ptr, size);
+  }
+  if (processConfig.dynamics_modifier_enebled) {
+    dynamics_modifier(ptr, size);
+  }
+  if (processConfig.soft_crip_enebled) {
+    soft_crip(ptr, size);
+  }
   Serial.println(*ptr);
 }
 
@@ -137,10 +151,7 @@ void gain_amp(int16_t *ptr, int size) {
     rs += 2;
   }
 
-  float amp = 1.0;
-  if (peak > 0) {
-    amp = gain_std / peak;
-  }
+  float amp = gain_std / peak;
   *ls = ptr;
   *rs = ls + 1;
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
@@ -458,6 +469,11 @@ void setup() {
   board_external_amp_mute_control(false);
 
   theFrontEnd->start();
+
+  /* process config initialize*/
+  processConfig.dynamics_modifier_enebled = false;
+  processConfig.soft_crip_enebled = false;
+  processConfig.gain_amp_anabled = false;
 }
 
 /**
