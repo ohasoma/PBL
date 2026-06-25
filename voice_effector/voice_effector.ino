@@ -3,7 +3,7 @@
 #include <MemoryUtil.h>
 #include <arch/board/board.h>
 #include <math.h>
-#include <Audio.h> 
+#include <Audio.h>
 
 FrontEnd* theFrontEnd;
 OutputMixer* theMixer;
@@ -21,26 +21,37 @@ bool isEnd = false;
 bool ErrEnd = false;
 
 //ohara_filterで使う変数↓-----------------
+
 //--parameter_setting--
 int pin_x = A0;
 int pin_y = A1;
-//--volum_filter--
+float av = 0.00025;
+
+//--bias_valume_filter--
+static float n;
+
+//--LR_volume_filter--
 static float nL, nR;
+
 //--delay_filter--
 static bool flag;
 static int delay;
-int max_delay = 4800; // 最大遅延 100ms (48kHz)
+int max_delay = 4800;  // 最大遅延 100ms (48kHz)
 static int16_t delayBufL[max_delay];
 static int16_t delayBufR[max_delay];
 static int writePos = 0;
-//--notch_filter--
+
+//--bandstop_filter--
 typedef struct {
   float a0, a1, a2;
   float b1, b2;
   float x1, x2;
   float y1, y2;
-} NotchFilter;
+} BandstopFilter;
 float fL, fR;
+float QL, QR;
+float fs = 48000.0f;  // サンプリング周波数
+
 //-----------------------------------------
 
 /**
@@ -125,16 +136,61 @@ void saito_filter(int16_t* ptr, int size) {
   //加工処理
 }
 void ohara_filter(int16_t* ptr, int size) {
-  volume_filter(ptr, size);
-  run_notch_filter(ptr, size);
+  parameter_setting(ptr, size);
+  bias_valume_filter(ptr, size);
+  LR_volume_filter(ptr, size);
+  run_bandstop_filter(ptr, size);
   delay_filter(ptr, size);
 }
 
-void parameter_setting(){
+void parameter_setting() {
   int16_t x = analogRead(pin_x);
   int16_t y = analogRead(pin_y);
+  //最小　x,y 250,250
+  //中央　x,y 510,510
+  //最大　x,y 810,810
+  x = x - 510;
+  y = y - 510;
+  float r = sqrt(pow(x, 2) + pow(y, 2));  //距離
+  float rad = atan2(x, y);                //角度
+  //bias倍率nを計算
+  n = 4.0 - r / 100.0;
+
+  //flag 判定
+  if (x >= 510) {
+    flag = true;
+  } else {
+    flag = false;
+  }
+  //delay計算(ウッドワースの公式を使う)
+  delay = av * (sin(abs(rad)) - abs(rad)) * 48000;
+
+  //bandstop_filter
+  if (rad >= 0) {
+    fR = 9000 - 4500 * sin(abs(rad));
+    fL = 9000 + 2000 * sin(abs(rad));
+  } else {
+    fL = 9000 - 4500 * sin(abs(rad));
+    fR = 9000 + 2000 * sin(abs(rad));
+  }
+  QL = fL / 1000;
+  QR = fR / 1000;
 }
-void volume_filter(int16_t* ptr, int size) {
+void bias_volume_filter(int16_t ptr, int size) {
+  for (int i; i < size; i += 2) {
+    int16_t L = ptr[i] * n;
+    int16_t R = ptr[i + 1] * n;
+
+    if (L > 32767) L = 32767;
+    if (L < -32768) L = -32768;
+    if (R > 32767) R = 32767;
+    if (R < -32768) R = -32768;
+
+    ptr[i] = L;
+    ptr[i + 1] = R;
+  }
+}
+void LR_volume_filter(int16_t* ptr, int size) {
 
   for (int i = 0; i < size; i += 2) {
     int16_t L = ptr[i] * nL;
@@ -142,7 +198,7 @@ void volume_filter(int16_t* ptr, int size) {
 
     if (L > 32767) L = 32767;
     if (L < -32768) L = -32768;
-    if (R> 32767) R = 32767;
+    if (R > 32767) R = 32767;
     if (R < -32768) R = -32768;
 
     ptr[i] = L;
@@ -150,47 +206,46 @@ void volume_filter(int16_t* ptr, int size) {
   }
 }
 
-void delay_filter(int16_t* ptr, int size)
-{
-    if (delay < 0) delay = 0;
-    if (delay >= MAX_DELAY) delay = MAX_DELAY - 1;
+void delay_filter(int16_t* ptr, int size) {
+  if (delay < 0) delay = 0;
+  if (delay >= MAX_DELAY) delay = MAX_DELAY - 1;
 
-    for (int i = 0; i < size; i += 2) {
+  for (int i = 0; i < size; i += 2) {
 
-        int16_t L = ptr[i];
-        int16_t R = ptr[i + 1];
+    int16_t L = ptr[i];
+    int16_t R = ptr[i + 1];
 
-        int readPos = writePos - delay;
-        if (readPos < 0) readPos += MAX_DELAY;
+    int readPos = writePos - delay;
+    if (readPos < 0) readPos += MAX_DELAY;
 
-        int16_t outL = L;
-        int16_t outR = R;
+    int16_t outL = L;
+    int16_t outR = R;
 
-        if (flag) {
-            // ★ 左だけ遅延
-            outL = delayBufL[readPos];
-        } else {
-            // ★ 右だけ遅延
-            outR = delayBufR[readPos];
-        }
-
-        // 出力
-        ptr[i]     = outL;
-        ptr[i + 1] = outR;
-
-        // 現在のサンプルをバッファに保存
-        delayBufL[writePos] = L;
-        delayBufR[writePos] = R;
-
-        // 書き込み位置を進める
-        writePos++;
-        if (writePos >= MAX_DELAY) writePos = 0;
+    if (flag) {
+      // ★ 左だけ遅延
+      outL = delayBufL[readPos];
+    } else {
+      // ★ 右だけ遅延
+      outR = delayBufR[readPos];
     }
+
+    // 出力
+    ptr[i] = outL;
+    ptr[i + 1] = outR;
+
+    // 現在のサンプルをバッファに保存
+    delayBufL[writePos] = L;
+    delayBufR[writePos] = R;
+
+    // 書き込み位置を進める
+    writePos++;
+    if (writePos >= MAX_DELAY) writePos = 0;
+  }
 }
 
-void init_notch(NotchFilter* nf, float fs, float f0, float Q) {
+void init_bandstop(BandstopFilter* nf, float fs, float fc, float Q) {
 
-  float w0 = 2.0f * M_PI * f0 / fs;
+  float w0 = 2.0f * M_PI * fc / fs;
   float alpha = sinf(w0) / (2.0f * Q);
 
   float b0 = 1.0f;
@@ -210,7 +265,7 @@ void init_notch(NotchFilter* nf, float fs, float f0, float Q) {
   nf->y1 = nf->y2 = 0.0f;
 }
 
-float notch_process(NotchFilter* nf, float x) {
+float bandstop_process(BandstopFilter* nf, float x) {
 
   float y = nf->a0 * x + nf->a1 * nf->x1 + nf->a2 * nf->x2
             - nf->b1 * nf->y1 - nf->b2 * nf->y2;
@@ -223,13 +278,11 @@ float notch_process(NotchFilter* nf, float x) {
   return y;
 }
 
-void run_notch_filter(int16_t* ptr, int size) {
-  float fs = 48000.0f;  // サンプリング周波数
-  float Q = 10.0f;      // Q値（鋭さ）
+void run_bandstop_filter(int16_t* ptr, int size) {
 
   // 状態は保持する（static）
-  static NotchFilter nfL;
-  static NotchFilter nfR;
+  static BandstopFilter nfL;
+  static BandstopFilter nfR;
   static bool initialized = false;
 
   // 初回だけ状態を初期化
@@ -238,8 +291,8 @@ void run_notch_filter(int16_t* ptr, int size) {
     nfR.x1 = nfR.x2 = nfR.y1 = nfR.y2 = 0;
     initialized = true;
   }
-  init_notch(&nfL, fs, fL, Q);
-  init_notch(&nfR, fs, fR, Q);
+  init_bandstop(&nfL, fs, fL, Q);
+  init_bandstop(&nfR, fs, fR, Q);
 
   // ステレオ処理（L/R 交互）
   for (int i = 0; i < size; i += 2) {
@@ -247,8 +300,8 @@ void run_notch_filter(int16_t* ptr, int size) {
     float L = (float)ptr[i];
     float R = (float)ptr[i + 1];
 
-    L = notch_process(&nfL, L);
-    R = notch_process(&nfR, R);
+    L = bandstop_process(&nfL, L);
+    R = bandstop_process(&nfR, R);
 
     ptr[i] = (int16_t)L;
     ptr[i + 1] = (int16_t)R;
