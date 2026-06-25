@@ -103,6 +103,19 @@ void distortion_filter(int16_t* ptr, int size)
 }
 
 //--------------------------------------------------------------------------------
+//テンプレート
+// void templete(int16_t* ptr, int size){
+//   int16_t *ls = ptr;
+//   int16_t *rs = ls + 1;
+//   //変数定義など
+//     for (int32_t cnt = 0; cnt < size; cnt += 4) {
+//     //ここに処理
+//     ls += 2;
+//     rs += 2;
+//   }
+// }
+
+//--------------------------------------------------------------------------------
 void saito_filter(int16_t* ptr, int size){
   //加工処理
   //dynamics_modifier(ptr, size);
@@ -111,6 +124,16 @@ void saito_filter(int16_t* ptr, int size){
 }
 
 //-----------------------------加工処理の関数--------------------------------------
+
+void gain_amp(int16_t* ptr, int size){
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+    for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    //ここに処理
+    ls += 2;
+    rs += 2;
+  }
+}
 
 void dynamics_modifier(int16_t* ptr, int size){
   float freq = 1.0;
