@@ -10,13 +10,13 @@
 FrontEnd *theFrontEnd;
 OutputMixer *theMixer;
 
-static const int32_t channel_num  = AS_CHANNEL_STEREO;
-static const int32_t bit_length   = AS_BITLENGTH_16;
+static const int32_t channel_num = AS_CHANNEL_STEREO;
+static const int32_t bit_length = AS_BITLENGTH_16;
 static const int32_t frame_sample = 240;
-static const int32_t frame_size   = frame_sample * (bit_length / 8) * channel_num; //(=7680)
+static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;  //(=7680)
 
-static const int32_t proc_size  = frame_size;
-static uint8_t proc_buffer[proc_size]; //ここにPCMデータが格納
+static const int32_t proc_size = frame_size;
+static uint8_t proc_buffer[proc_size];  //ここにPCMデータが格納
 
 bool isCaptured = false;
 bool isEnd = false;
@@ -28,9 +28,8 @@ bool ErrEnd = false;
  * @param [in] uint16_t   ptr
  * @param [in] int        size
  */
-void signal_process(int16_t* ptr, int size)
-{
-  main_filter(ptr,size);
+void signal_process(int16_t *ptr, int size) {
+  main_filter(ptr, size);
 }
 
 /**
@@ -38,14 +37,13 @@ void signal_process(int16_t* ptr, int size)
  *
  * @param [in] pcm_param    AsPcmDataParam type
  */
-void rc_filter(int16_t* ptr, int size)
-{
+void rc_filter(int16_t *ptr, int size) {
   /* Example : RC filter for 16bit PCM */
 
   static const int PeakLevel = 32700;
   static const int LevelGain = 2;
 
-  int16_t *ls = (int16_t*)ptr;
+  int16_t *ls = (int16_t *)ptr;
   int16_t *rs = ls + 1;
 
   static int16_t ls_l = 0;
@@ -80,8 +78,7 @@ void rc_filter(int16_t* ptr, int size)
  *
  * @param [in] pcm_param    AsPcmDataParam type
  */
-void distortion_filter(int16_t* ptr, int size)
-{
+void distortion_filter(int16_t *ptr, int size) {
   /* Example : Distortion filter for 16bit PCM */
 
   static const int PeakLevel = 170;
@@ -116,26 +113,50 @@ void distortion_filter(int16_t* ptr, int size)
 // }
 
 //--------------------------------------------------------------------------------
-void saito_filter(int16_t* ptr, int size){
+void saito_filter(int16_t *ptr, int size) {
   //加工処理
+  gain_amp(ptr, size);
   //dynamics_modifier(ptr, size);
-  soft_crip(ptr, size);
+  //soft_crip(ptr, size);
   Serial.println(*ptr);
 }
 
 //-----------------------------加工処理の関数--------------------------------------
 
-void gain_amp(int16_t* ptr, int size){
+void gain_amp(int16_t *ptr, int size) {
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
-    for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    //ここに処理
+  int16_t gain_std = 5000;
+  int16_t peak = 1;
+  for (int cnt = 0; cnt < size; cnt += 4) {
+    int16_t a = abs(*ls);
+    int16_t b = abs(*rs);
+    if (a > peak) peak = a;
+    if (b > peak) peak = b;
+    ls += 2;
+    rs += 2;
+  }
+
+  float amp = 1.0;
+  if (peak > 0) {
+    amp = gain_std / peak;
+  }
+  *ls = ptr;
+  *rs = ls + 1;
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int32_t tmp;
+
+    tmp = *ls;
+    *ls = int16_t(tmp * amp);
+    tmp = *rs;
+    *rs = int16_t(tmp * amp);
+
     ls += 2;
     rs += 2;
   }
 }
 
-void dynamics_modifier(int16_t* ptr, int size){
+void dynamics_modifier(int16_t *ptr, int size) {
   float freq = 1.0;
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
@@ -154,35 +175,35 @@ void dynamics_modifier(int16_t* ptr, int size){
   }
 }
 
-void soft_crip(int16_t* ptr, int size){
+void soft_crip(int16_t *ptr, int size) {
   int16_t thresholdplus = 1000;
   int16_t thresholdminus = -1000;
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    if(*ls > thresholdplus){
+    if (*ls > thresholdplus) {
       *ls = thresholdplus;
     }
 
-    if(*ls < thresholdminus){
+    if (*ls < thresholdminus) {
       *ls = thresholdminus;
     }
 
-    if(*rs > thresholdplus){
+    if (*rs > thresholdplus) {
       *rs = thresholdplus;
     }
 
-    if(*rs < thresholdminus){
+    if (*rs < thresholdminus) {
       *rs = thresholdminus;
     }
-    
+
     ls += 2;
     rs += 2;
   }
 }
 //--------------------------------------------------------------------------------
-void ohara_filter(int16_t* ptr, int size){
+void ohara_filter(int16_t *ptr, int size) {
 
   //パラメータ定義
   float magnification_L = 1;
@@ -197,10 +218,10 @@ void ohara_filter(int16_t* ptr, int size){
     //音量調整
     int32_t r = (*rs) * magnification_R;
     int32_t l = (*ls) * magnification_L;
-    if(r > 32767) r = 32767;
-    if(r < -32768) r = -32768;
-    if(l > 32767) l = 32767;
-    if(l < -32768) l = -32768;
+    if (r > 32767) r = 32767;
+    if (r < -32768) r = -32768;
+    if (l > 32767) l = 32767;
+    if (l < -32768) l = -32768;
 
     *rs = (int16_t)r;
     *ls = (int16_t)l;
@@ -210,18 +231,18 @@ void ohara_filter(int16_t* ptr, int size){
   }
 }
 
-void force_mono(int16_t* ptr, int size){
-    int16_t* L = ptr;
-    int16_t* R = ptr + 1;
+void force_mono(int16_t *ptr, int size) {
+  int16_t *L = ptr;
+  int16_t *R = ptr + 1;
 
-    for(int i = 0; i < size; i += 4){
-        *R = *L;  // L の値を R にコピー
-        L += 2;
-        R += 2;
-    }
+  for (int i = 0; i < size; i += 4) {
+    *R = *L;  // L の値を R にコピー
+    L += 2;
+    R += 2;
+  }
 }
 
-void main_filter(int16_t* ptr, int size){
+void main_filter(int16_t *ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
   saito_filter(ptr, size);
   ohara_filter(ptr, size);
@@ -234,8 +255,7 @@ void main_filter(int16_t* ptr, int size){
  * @param [in] val   source value
  * @param [in] peak  clip point value
  */
-inline int16_t clip(int32_t val, int32_t peak)
-{
+inline int16_t clip(int32_t val, int32_t peak) {
   return (val > 0) ? ((val < peak) ? val : peak) : ((val > (-1 * peak)) ? val : (-1 * peak));
 }
 
@@ -245,8 +265,7 @@ inline int16_t clip(int32_t val, int32_t peak)
  * When audio internal error occurs, this function will be called back.
  */
 
-void frontend_attention_cb(const ErrorAttentionParam *param)
-{
+void frontend_attention_cb(const ErrorAttentionParam *param) {
   puts("Attention!");
 
   if (param->error_code >= AS_ATTENTION_CODE_WARNING) {
@@ -259,8 +278,7 @@ void frontend_attention_cb(const ErrorAttentionParam *param)
  *
  * When audio internal error occurs, this function will be called back.
  */
-void mixer_attention_cb(const ErrorAttentionParam *param)
-{
+void mixer_attention_cb(const ErrorAttentionParam *param) {
   puts("Attention!");
 
   if (param->error_code >= AS_ATTENTION_CODE_WARNING) {
@@ -278,11 +296,10 @@ void mixer_attention_cb(const ErrorAttentionParam *param)
  * @return true on success, false otherwise
  */
 
-static bool frontend_done_callback(AsMicFrontendEvent ev, uint32_t result, uint32_t sub_result)
-{
+static bool frontend_done_callback(AsMicFrontendEvent ev, uint32_t result, uint32_t sub_result) {
   UNUSED(ev);
   UNUSED(result);
-  UNUSED(sub_result);  
+  UNUSED(sub_result);
   return true;
 }
 
@@ -295,8 +312,7 @@ static bool frontend_done_callback(AsMicFrontendEvent ev, uint32_t result, uint3
  */
 static void outputmixer_done_callback(MsgQueId requester_dtq,
                                       MsgType reply_of,
-                                      AsOutputMixDoneParam* done_param)
-{
+                                      AsOutputMixDoneParam *done_param) {
   UNUSED(requester_dtq);
   UNUSED(reply_of);
   UNUSED(done_param);
@@ -308,8 +324,7 @@ static void outputmixer_done_callback(MsgQueId requester_dtq,
  *
  * @param [in] pcm          PCM data structure
  */
-static void frontend_pcm_callback(AsPcmDataParam pcm)
-{
+static void frontend_pcm_callback(AsPcmDataParam pcm) {
   if (!pcm.is_valid) {
     puts("Invalid data !");
     memset(proc_buffer, 0, frame_size);
@@ -320,7 +335,7 @@ static void frontend_pcm_callback(AsPcmDataParam pcm)
     }
 
     if (pcm.size == 0) {
-      memset(proc_buffer, 0, frame_size);        
+      memset(proc_buffer, 0, frame_size);
     } else {
       memcpy(proc_buffer, pcm.mh.getPa(), pcm.size);
     }
@@ -341,8 +356,7 @@ static void frontend_pcm_callback(AsPcmDataParam pcm)
  * @param [in] identifier   Device identifier
  * @param [in] is_end       For normal request give false, for stop request give true
  */
-static void outmixer0_send_callback(int32_t identifier, bool is_end)
-{
+static void outmixer0_send_callback(int32_t identifier, bool is_end) {
   /* Do nothing, as the pcm data already sent in the main loop. */
   UNUSED(identifier);
   UNUSED(is_end);
@@ -352,10 +366,9 @@ static void outmixer0_send_callback(int32_t identifier, bool is_end)
 /**
  * @brief Execute signal processing for one frame
  */
-bool execute_aframe()
-{
+bool execute_aframe() {
   isCaptured = false;
-  signal_process((int16_t*)proc_buffer, proc_size);
+  signal_process((int16_t *)proc_buffer, proc_size);
 
   AsPcmDataParam pcm_param;
 
@@ -390,7 +403,6 @@ bool execute_aframe()
   }
 
   return true;
-
 }
 
 /**
@@ -399,11 +411,11 @@ bool execute_aframe()
  * Set input device to Mic <br>
  * Initialize frontend to capture stereo and 48kHz sample rate <br>
  */
-void setup()
-{
+void setup() {
   /* Initialize serial */
   Serial.begin(115200);
-  while (!Serial);
+  while (!Serial)
+    ;
 
   /* Initialize memory pools and message libs */
   initMemoryPools();
@@ -446,14 +458,12 @@ void setup()
   board_external_amp_mute_control(false);
 
   theFrontEnd->start();
-
 }
 
 /**
  * @brief audio loop
  */
-void loop()
-{
+void loop() {
   if (ErrEnd) {
     puts("Error End");
     theFrontEnd->stop();
@@ -464,18 +474,18 @@ void loop()
     if (!execute_aframe()) {
       printf("Rendering error!\n");
       goto exitCapturing;
-    } 
+    }
   }
 
   if (isEnd && !isCaptured) {
-    isEnd= false;
+    isEnd = false;
     goto exitCapturing;
   }
 
   return;
 
 exitCapturing:
-  board_external_amp_mute_control(true); 
+  board_external_amp_mute_control(true);
   theFrontEnd->deactivate();
   theMixer->deactivate(OutputMixer0);
   theFrontEnd->end();
