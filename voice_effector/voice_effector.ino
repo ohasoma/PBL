@@ -23,9 +23,10 @@ bool isEnd = false;
 bool ErrEnd = false;
 
 struct ProcessConfig {
-  bool gain_amp_anabled;
+  bool gain_amp_enabled;
   bool dynamics_modifier_enebled;
   bool soft_crip_enebled;
+  bool serial_send_enebled;
 };
 
 ProcessConfig processConfig;
@@ -121,9 +122,47 @@ void distortion_filter(int16_t *ptr, int size) {
 // }
 
 //--------------------------------------------------------------------------------
+//シリアル通信
+void serial_recieve(){
+  if (Serial.available() > 0 ) {
+    // シリアルデータの受信 (改行まで)
+    String data = Serial.readStringUntil('\n');
+
+    if(data == "amp"){
+      processConfig.gain_amp_enabled = !processConfig.gain_amp_enabled;
+      Serial.print("gain_amp: ");
+      Serial.println(processConfig.gain_amp_enabled);
+    }
+    if(data == "dynamics"){
+      processConfig.dynamics_modifier_enebled = !processConfig.dynamics_modifier_enebled;
+      Serial.print("dynaimcs_modifier: ");
+      Serial.println(processConfig.dynamics_modifier_enebled);
+    }
+    if(data == "softcrip"){
+      processConfig.soft_crip_enebled = !processConfig.soft_crip_enebled;
+      Serial.print("soft_crip: ");
+      Serial.println(processConfig.soft_crip_enebled);
+    }
+    if(data == "serial"){
+      processConfig.serial_send_enebled = !processConfig.serial_send_enebled;
+      Serial.print("serial_send: ");
+      Serial.println(processConfig.serial_send_enebled);
+    }
+    if(data == "help"){
+      Serial.println("----------keywords-----------");
+      Serial.println("amp");
+      Serial.println("dynamics");
+      Serial.println("softcrip");
+      Serial.println("serial");
+      Serial.println("-----------------------------");
+    }
+  }
+}
+
+//--------------------------------------------------------------------------------
 void saito_filter(int16_t *ptr, int size) {
   //加工処理
-  if (processConfig.gain_amp_anabled) {
+  if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
   if (processConfig.dynamics_modifier_enebled) {
@@ -132,12 +171,15 @@ void saito_filter(int16_t *ptr, int size) {
   if (processConfig.soft_crip_enebled) {
     soft_crip(ptr, size);
   }
-  Serial.println(*ptr);
+  if (processConfig.serial_send_enebled) {
+    Serial.println(*ptr);
+  }
 }
 
 //-----------------------------加工処理の関数--------------------------------------
 
 void gain_amp(int16_t *ptr, int size) {
+  if (!isCaptured) return;
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
   int16_t gain_std = 5000;
@@ -473,7 +515,8 @@ void setup() {
   /* process config initialize*/
   processConfig.dynamics_modifier_enebled = false;
   processConfig.soft_crip_enebled = false;
-  processConfig.gain_amp_anabled = false;
+  processConfig.gain_amp_enabled = false;
+  processConfig.serial_send_enebled = false;
 }
 
 /**
@@ -497,6 +540,10 @@ void loop() {
     isEnd = false;
     goto exitCapturing;
   }
+
+  //changed
+  serial_recieve();
+  //till here
 
   return;
 
