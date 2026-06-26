@@ -4,6 +4,7 @@
 #include <arch/board/board.h>
 #include <math.h>
 #include <Audio.h>
+#define max_delay 4800 // 最大遅延 100ms (48kHz)
 
 FrontEnd* theFrontEnd;
 OutputMixer* theMixer;
@@ -35,8 +36,7 @@ static float nL, nR;
 
 //--delay_filter--
 static bool flag;
-static int delay;
-int max_delay = 4800;  // 最大遅延 100ms (48kHz)
+static int delay_sample;
 static int16_t delayBufL[max_delay];
 static int16_t delayBufR[max_delay];
 static int writePos = 0;
@@ -48,99 +48,32 @@ typedef struct {
   float x1, x2;
   float y1, y2;
 } BandstopFilter;
+static BandstopFilter nfL;
+static BandstopFilter nfR;
 float fL, fR;
 float QL, QR;
 float fs = 48000.0f;  // サンプリング周波数
 
 //-----------------------------------------
-
-/**
- * @brief Sample singnal Processing function
- *
- * @param [in] uint16_t   ptr
- * @param [in] int        size
- */
-void signal_process(int16_t* ptr, int size) {
+void signal_process(int16_t *ptr, int size) {
   main_filter(ptr, size);
 }
-
-/**
- * @brief RC-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void rc_filter(int16_t* ptr, int size) {
-  /* Example : RC filter for 16bit PCM */
-
-  static const int PeakLevel = 32700;
-  static const int LevelGain = 2;
-
-  int16_t* ls = (int16_t*)ptr;
-  int16_t* rs = ls + 1;
-
-  static int16_t ls_l = 0;
-  static int16_t rs_l = 0;
-
-  if (!ls_l && !rs_l) {
-    ls_l = *ls * LevelGain;
-    rs_l = *rs * LevelGain;
-  }
-
-  for (int cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    *ls = *ls * LevelGain;
-    *rs = *rs * LevelGain;
-
-    tmp = (ls_l * 98 / 100) + (*ls * 2 / 100);
-    *ls = clip(tmp, PeakLevel);
-    tmp = (rs_l * 98 / 100) + (*rs * 2 / 100);
-    *rs = clip(tmp, PeakLevel);
-
-    ls_l = *ls;
-    rs_l = *rs;
-
-    ls += 2;
-    rs += 2;
-  }
-}
-
-/**
- * @brief Distortion(Peak-cut)-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void distortion_filter(int16_t* ptr, int size) {
-  /* Example : Distortion filter for 16bit PCM */
-
-  static const int PeakLevel = 170;
-
-  int16_t* ls = ptr;
-  int16_t* rs = ls + 1;
-
-  for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    tmp = *ls * 4 / 3;
-    *ls = clip(tmp, PeakLevel);
-    tmp = *rs * 4 / 3;
-    *rs = clip(tmp, PeakLevel);
-
-    ls += 2;
-    rs += 2;
-  }
-}
-
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t* ptr, int size) {
   //加工処理
 }
 void ohara_filter(int16_t* ptr, int size) {
-  parameter_setting(ptr, size);
-  bias_valume_filter(ptr, size);
+  parameter_setting();
+  bias_volume_filter(ptr, size);
   LR_volume_filter(ptr, size);
   run_bandstop_filter(ptr, size);
   delay_filter(ptr, size);
+}
+
+void main_filter(int16_t* ptr, int size) {
+  force_mono(ptr, size);  //LをRにコピー
+  saito_filter(ptr, size);
+  ohara_filter(ptr, size);
 }
 
 void parameter_setting() {
@@ -157,13 +90,13 @@ void parameter_setting() {
   n = 4.0 - r / 100.0;
 
   //flag 判定
-  if (x >= 510) {
+  if (rad >= 0) {
     flag = true;
   } else {
     flag = false;
   }
   //delay計算(ウッドワースの公式を使う)
-  delay = av * (sin(abs(rad)) - abs(rad)) * 48000;
+  delay_sample = static_cast<int>(av * (abs(rad) - sin(abs(rad))) * 48000);
 
   //bandstop_filter
   if (rad >= 0) {
@@ -175,9 +108,21 @@ void parameter_setting() {
   }
   QL = fL / 1000;
   QR = fR / 1000;
+
+  init_bandstop(&nfL, fs, fL, QL);
+  init_bandstop(&nfR, fs, fR, QR);
+
+  //LR_volume_filter
+  float pan = rad / (M_PI / 2.0f);
+  if (pan < -1) pan = -1;
+  if (pan > 1) pan = 1;
+  float k = 0.7f;  // 耳の遮蔽を表す係数
+  nL = n * (1.0f - k * max(0.0f, pan));
+  nR = n * (1.0f - k * max(0.0f, -pan));
 }
-void bias_volume_filter(int16_t ptr, int size) {
-  for (int i; i < size; i += 2) {
+
+void bias_volume_filter(int16_t* ptr, int size) {
+  for (int i = 0; i < size; i += 2) {
     int16_t L = ptr[i] * n;
     int16_t R = ptr[i + 1] * n;
 
@@ -191,7 +136,6 @@ void bias_volume_filter(int16_t ptr, int size) {
   }
 }
 void LR_volume_filter(int16_t* ptr, int size) {
-
   for (int i = 0; i < size; i += 2) {
     int16_t L = ptr[i] * nL;
     int16_t R = ptr[i + 1] * nR;
@@ -207,16 +151,16 @@ void LR_volume_filter(int16_t* ptr, int size) {
 }
 
 void delay_filter(int16_t* ptr, int size) {
-  if (delay < 0) delay = 0;
-  if (delay >= MAX_DELAY) delay = MAX_DELAY - 1;
+  if (delay_sample < 0) delay_sample = 0;
+  if (delay_sample >= max_delay) delay_sample = max_delay - 1;
 
   for (int i = 0; i < size; i += 2) {
 
     int16_t L = ptr[i];
     int16_t R = ptr[i + 1];
 
-    int readPos = writePos - delay;
-    if (readPos < 0) readPos += MAX_DELAY;
+    int readPos = writePos - delay_sample;
+    if (readPos < 0) readPos += max_delay;
 
     int16_t outL = L;
     int16_t outR = R;
@@ -239,7 +183,7 @@ void delay_filter(int16_t* ptr, int size) {
 
     // 書き込み位置を進める
     writePos++;
-    if (writePos >= MAX_DELAY) writePos = 0;
+    if (writePos >= max_delay) writePos = 0;
   }
 }
 
@@ -280,9 +224,6 @@ float bandstop_process(BandstopFilter* nf, float x) {
 
 void run_bandstop_filter(int16_t* ptr, int size) {
 
-  // 状態は保持する（static）
-  static BandstopFilter nfL;
-  static BandstopFilter nfR;
   static bool initialized = false;
 
   // 初回だけ状態を初期化
@@ -291,8 +232,6 @@ void run_bandstop_filter(int16_t* ptr, int size) {
     nfR.x1 = nfR.x2 = nfR.y1 = nfR.y2 = 0;
     initialized = true;
   }
-  init_bandstop(&nfL, fs, fL, Q);
-  init_bandstop(&nfR, fs, fR, Q);
 
   // ステレオ処理（L/R 交互）
   for (int i = 0; i < size; i += 2) {
@@ -308,13 +247,6 @@ void run_bandstop_filter(int16_t* ptr, int size) {
   }
 }
 
-
-
-
-
-
-
-
 void force_mono(int16_t* ptr, int size) {
   int16_t* L = ptr;
   int16_t* R = ptr + 1;
@@ -326,11 +258,6 @@ void force_mono(int16_t* ptr, int size) {
   }
 }
 
-void main_filter(int16_t* ptr, int size) {
-  force_mono(ptr, size);  //LをRにコピー
-  saito_filter(ptr, size);
-  ohara_filter(ptr, size);
-}
 //--------------------------------------------------------------------------------
 
 /**
