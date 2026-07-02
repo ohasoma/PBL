@@ -179,10 +179,9 @@ void saito_filter(int16_t *ptr, int size) {
 //-----------------------------加工処理の関数--------------------------------------
 
 void gain_amp(int16_t *ptr, int size) {
-  if (!isCaptured) return;
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
-  int16_t gain_std = 5000;
+  int16_t gain_std = 15000;
   int16_t peak = 1;
   for (int cnt = 0; cnt < size; cnt += 4) {
     int16_t a = abs(*ls);
@@ -193,9 +192,11 @@ void gain_amp(int16_t *ptr, int size) {
     rs += 2;
   }
 
+  if(peak < 1500) return;
+
   float amp = gain_std / peak;
-  *ls = ptr;
-  *rs = ls + 1;
+  ls = ptr;
+  rs = ls + 1;
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     int32_t tmp;
 
@@ -229,26 +230,26 @@ void dynamics_modifier(int16_t *ptr, int size) {
 }
 
 void soft_crip(int16_t *ptr, int size) {
-  int16_t thresholdplus = 1000;
-  int16_t thresholdminus = -1000;
+  int16_t thresholdplus = 8000;
+  int16_t thresholdminus = -8000;
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     if (*ls > thresholdplus) {
-      *ls = thresholdplus;
+      *ls = thresholdplus * 2;
     }
 
     if (*ls < thresholdminus) {
-      *ls = thresholdminus;
+      *ls = thresholdminus * 2;
     }
 
     if (*rs > thresholdplus) {
-      *rs = thresholdplus;
+      *rs = thresholdplus * 2;
     }
 
     if (*rs < thresholdminus) {
-      *rs = thresholdminus;
+      *rs = thresholdminus * 2;
     }
 
     ls += 2;
