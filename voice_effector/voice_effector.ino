@@ -30,9 +30,9 @@ bool ErrEnd = false;
 
 struct ProcessConfig {
   bool gain_amp_enabled;
-  bool dynamics_modifier_enebled;
-  bool soft_crip_enebled;
-  bool serial_send_enebled;
+  bool dynamics_modifier_enabled;
+  bool soft_crip_enabled;
+  bool serial_send_enabled;
   bool delay_enabled;
 };
 
@@ -141,14 +141,14 @@ void serial_recieve() {
       Serial.println(processConfig.gain_amp_enabled);
     }
     if (data == "dynamics") {
-      processConfig.dynamics_modifier_enebled = !processConfig.dynamics_modifier_enebled;
+      processConfig.dynamics_modifier_enabled = !processConfig.dynamics_modifier_enabled;
       Serial.print("dynaimcs_modifier: ");
-      Serial.println(processConfig.dynamics_modifier_enebled);
+      Serial.println(processConfig.dynamics_modifier_enabled);
     }
     if (data == "softcrip") {
-      processConfig.soft_crip_enebled = !processConfig.soft_crip_enebled;
+      processConfig.soft_crip_enabled = !processConfig.soft_crip_enabled;
       Serial.print("soft_crip: ");
-      Serial.println(processConfig.soft_crip_enebled);
+      Serial.println(processConfig.soft_crip_enabled);
     }
     if (data == "delay") {
       processConfig.delay_enabled = !processConfig.delay_enabled;
@@ -156,9 +156,9 @@ void serial_recieve() {
       Serial.println(processConfig.delay_enabled);
     }
     if (data == "serial") {
-      processConfig.serial_send_enebled = !processConfig.serial_send_enebled;
+      processConfig.serial_send_enabled = !processConfig.serial_send_enabled;
       Serial.print("serial_send: ");
-      Serial.println(processConfig.serial_send_enebled);
+      Serial.println(processConfig.serial_send_enabled);
     }
     if (data == "help") {
       Serial.println("----------keywords-----------");
@@ -178,16 +178,16 @@ void saito_filter(int16_t *ptr, int size) {
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
-  if (processConfig.dynamics_modifier_enebled) {
+  if (processConfig.dynamics_modifier_enabled) {
     dynamics_modifier(ptr, size);
   }
-  if (processConfig.soft_crip_enebled) {
+  if (processConfig.soft_crip_enabled) {
     soft_crip(ptr, size);
   }
   if (processConfig.delay_enabled) {
     delay(ptr, size);
   }
-  if (processConfig.serial_send_enebled) {
+  if (processConfig.serial_send_enabled) {
     Serial.println(*ptr);
   }
 }
@@ -562,10 +562,10 @@ void setup() {
   theFrontEnd->start();
 
   /* process config initialize*/
-  processConfig.dynamics_modifier_enebled = false;
-  processConfig.soft_crip_enebled = false;
+  processConfig.dynamics_modifier_enabled = false;
+  processConfig.soft_crip_enabled = false;
   processConfig.gain_amp_enabled = false;
-  processConfig.serial_send_enebled = false;
+  processConfig.serial_send_enabled = false;
   processConfig.delay_enabled = false;
 }
 
