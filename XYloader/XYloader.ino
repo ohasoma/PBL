@@ -7,10 +7,11 @@ void setup() {
 
 void loop() {
   int xPosition = analogRead(pin_x);
-  int yPosition = 1023 - analogRead(pin_y);
+  int yPosition = analogRead(pin_y);
 
   Serial.print("X軸: ");
   Serial.print(xPosition);
   Serial.print(" | Y軸: ");
   Serial.println(yPosition);
+  delay(1000);
 }

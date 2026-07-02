@@ -27,19 +27,23 @@ bool ErrEnd = false;
 const int pin_x = A0;
 const int pin_y = A1;
 const float av = 0.00025;
+float x, y, r, rad;
+unsigned long current = 0;
+volatile int adc_x = 510;
+volatile int adc_y = 510;
 
 //--bias_valume_filter--
-static float n;
+float n;
 
 //--LR_volume_filter--
-static float nL, nR;
+float nL, nR;
 
 //--delay_filter--
-static bool flag;
+bool flag;
 static int delay_sample;
 static int16_t delayBufL[max_delay];
 static int16_t delayBufR[max_delay];
-static int writePos = 0;
+int writePos = 0;
 
 //--bandstop_filter--
 typedef struct {
@@ -64,7 +68,6 @@ void saito_filter(int16_t* ptr, int size) {
 }
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
-  bias_volume_filter(ptr, size);
   LR_volume_filter(ptr, size);
   run_bandstop_filter(ptr, size);
   delay_filter(ptr, size);
@@ -81,16 +84,16 @@ void parameter_setting() {
   static float x_f = 510.0f;
   static float y_f = 510.0f;
 
-  x_f = 0.95f * x_f + 0.05f * analogRead(pin_x);
-  y_f = 0.95f * y_f + 0.05f * (1023 - analogRead(pin_y));
+  x_f = 0.95f * x_f + 0.05f * adc_x;
+  y_f = 0.95f * y_f + 0.05f * adc_y;
 
-  float x = x_f - 510.0f;
-  float y = y_f - 510.0f;
+  x = x_f - 510.0f;
+  y = y_f - 510.0f;
 
-  float r = sqrt(pow(x, 2) + pow(y, 2));  //距離
-  float rad = atan2(x, y);                //角度
+  r = sqrtf(x * x + y * y);  //距離
+  rad = atan2(x, y);         //角度
   //bias倍率nを計算
-  n = max(0.0f, 4.0f - r / 100.0f);
+  n = (400.0f - r) / 100.0f;
 
   //flag 判定
   if (rad >= 0) {
@@ -120,47 +123,71 @@ void parameter_setting() {
   if (pan < -1) pan = -1;
   if (pan > 1) pan = 1;
   float k = 0.7f;  // 耳の遮蔽を表す係数
-  nL = (1.0f - k * max(0.0f, pan));
-  nR = (1.0f - k * max(0.0f, -pan));
+  nL = n * (1.0f - k * max(0.0f, pan));
+  nR = n * (1.0f - k * max(0.0f, -pan));
 }
 
 void bias_volume_filter(int16_t* ptr, int size) {
-  for (int i = 0; i < size; i += 2) {
-    int16_t L = ptr[i] * n;
-    int16_t R = ptr[i + 1] * n;
 
-    if (L > 32767) L = 32767;
-    if (L < -32768) L = -32768;
-    if (R > 32767) R = 32767;
-    if (R < -32768) R = -32768;
+  int16_t* L = ptr;
+  int16_t* R = ptr + 1;
 
-    ptr[i] = L;
-    ptr[i + 1] = R;
+  for (int i = 0; i < size; i += 4) {
+
+    int32_t l = (*L) * n;
+    int32_t r = (*R) * n;
+
+    if (l > 32767) l = 32767;
+    if (l < -32768) l = -32768;
+
+    if (r > 32767) r = 32767;
+    if (r < -32768) r = -32768;
+
+    *L = (int16_t)l;
+    *R = (int16_t)r;
+
+    L += 2;
+    R += 2;
   }
 }
+
+
 void LR_volume_filter(int16_t* ptr, int size) {
-  for (int i = 0; i < size; i += 2) {
-    int16_t L = ptr[i] * nL;
-    int16_t R = ptr[i + 1] * nR;
 
-    if (L > 32767) L = 32767;
-    if (L < -32768) L = -32768;
-    if (R > 32767) R = 32767;
-    if (R < -32768) R = -32768;
+  int16_t* L = ptr;
+  int16_t* R = ptr + 1;
 
-    ptr[i] = L;
-    ptr[i + 1] = R;
+  for (int i = 0; i < size; i += 4) {
+
+    int32_t l = (*L) * nL;
+    int32_t r = (*R) * nR;
+
+    if (l > 32767) l = 32767;
+    if (l < -32768) l = -32768;
+
+    if (r > 32767) r = 32767;
+    if (r < -32768) r = -32768;
+
+    *L = (int16_t)l;
+    *R = (int16_t)r;
+
+    L += 2;
+    R += 2;
   }
 }
 
 void delay_filter(int16_t* ptr, int size) {
+
   if (delay_sample < 0) delay_sample = 0;
   if (delay_sample >= max_delay) delay_sample = max_delay - 1;
 
-  for (int i = 0; i < size; i += 2) {
+  int16_t* Lp = ptr;
+  int16_t* Rp = ptr + 1;
 
-    int16_t L = ptr[i];
-    int16_t R = ptr[i + 1];
+  for (int i = 0; i < size; i += 4) {
+
+    int16_t L = *Lp;
+    int16_t R = *Rp;
 
     int readPos = writePos - delay_sample;
     if (readPos < 0) readPos += max_delay;
@@ -169,24 +196,22 @@ void delay_filter(int16_t* ptr, int size) {
     int16_t outR = R;
 
     if (flag) {
-      // ★ 左だけ遅延
       outL = delayBufL[readPos];
     } else {
-      // ★ 右だけ遅延
       outR = delayBufR[readPos];
     }
 
-    // 出力
-    ptr[i] = outL;
-    ptr[i + 1] = outR;
+    *Lp = outL;
+    *Rp = outR;
 
-    // 現在のサンプルをバッファに保存
     delayBufL[writePos] = L;
     delayBufR[writePos] = R;
 
-    // 書き込み位置を進める
     writePos++;
     if (writePos >= max_delay) writePos = 0;
+
+    Lp += 2;
+    Rp += 2;
   }
 }
 
@@ -224,24 +249,33 @@ float bandstop_process(BandstopFilter* nf, float x) {
 
 void run_bandstop_filter(int16_t* ptr, int size) {
 
-  // ステレオ処理（L/R 交互）
-  for (int i = 0; i < size; i += 2) {
+  int16_t* L = ptr;
+  int16_t* R = ptr + 1;
 
-    float L = (float)ptr[i];
-    float R = (float)ptr[i + 1];
+  for (int i = 0; i < size; i += 4) {
 
-    L = bandstop_process(&nfL, L);
-    R = bandstop_process(&nfR, R);
+    float l = (float)(*L);
+    float r = (float)(*R);
 
-    ptr[i] = (int16_t)L;
-    ptr[i + 1] = (int16_t)R;
+    l = bandstop_process(&nfL, l);
+    r = bandstop_process(&nfR, r);
+
+    *L = (int16_t)l;
+    *R = (int16_t)r;
+
+    L += 2;
+    R += 2;
   }
 }
 
 void force_mono(int16_t* ptr, int size) {
+  int16_t* L = ptr;
+  int16_t* R = ptr + 1;
 
-  for (int i = 0; i < size; i += 2) {
-    ptr[i + 1] = ptr[i];
+  for (int i = 0; i < size; i += 4) {
+    *R = *L;  // L の値を R にコピー
+    L += 2;
+    R += 2;
   }
 }
 
@@ -462,6 +496,26 @@ void setup() {
  * @brief audio loop
  */
 void loop() {
+  /*
+  Serial.print(x);
+  Serial.print(" ");
+  Serial.print(y);
+  Serial.print(" ");
+  Serial.print(r);
+  Serial.print(" ");
+  Serial.println(rad);
+  Serial.print(" ");
+  Serial.println(n);
+  Serial.print(" ");
+  Serial.println(nL);
+  Serial.print(" ");
+  Serial.println(QL);
+*/
+  if (millis() - current > 100) {
+    adc_x = analogRead(A0);
+    adc_y = analogRead(A1);
+    current = millis();
+  }
   if (ErrEnd) {
     puts("Error End");
     theFrontEnd->stop();
