@@ -150,7 +150,7 @@ void serial_recieve() {
       Serial.print("soft_crip: ");
       Serial.println(processConfig.soft_crip_enebled);
     }
-        if (data == "delay") {
+    if (data == "delay") {
       processConfig.delay_enabled = !processConfig.delay_enabled;
       Serial.print("delay: ");
       Serial.println(processConfig.delay_enabled);
