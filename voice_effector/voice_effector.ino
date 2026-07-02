@@ -4,7 +4,7 @@
 #include <arch/board/board.h>
 #include <math.h>
 #include <Audio.h>
-#define max_delay 4800 // 最大遅延 100ms (48kHz)
+#define max_delay 4800  // 最大遅延 100ms (48kHz)
 
 FrontEnd* theFrontEnd;
 OutputMixer* theMixer;
@@ -24,9 +24,9 @@ bool ErrEnd = false;
 //ohara_filterで使う変数↓-----------------
 
 //--parameter_setting--
-int pin_x = A0;
-int pin_y = A1;
-float av = 0.00025;
+const int pin_x = A0;
+const int pin_y = A1;
+const float av = 0.00025;
 
 //--bias_valume_filter--
 static float n;
@@ -55,7 +55,7 @@ float QL, QR;
 float fs = 48000.0f;  // サンプリング周波数
 
 //-----------------------------------------
-void signal_process(int16_t *ptr, int size) {
+void signal_process(int16_t* ptr, int size) {
   main_filter(ptr, size);
 }
 //--------------------------------------------------------------------------------
@@ -77,17 +77,20 @@ void main_filter(int16_t* ptr, int size) {
 }
 
 void parameter_setting() {
-  int16_t x = analogRead(pin_x);
-  int16_t y = analogRead(pin_y);
-  //最小　x,y 250,250
-  //中央　x,y 510,510
-  //最大　x,y 810,810
-  x = x - 510;
-  y = y - 510;
+  //座標計算
+  static float x_f = 510.0f;
+  static float y_f = 510.0f;
+
+  x_f = 0.95f * x_f + 0.05f * analogRead(pin_x);
+  y_f = 0.95f * y_f + 0.05f * (1023 - analogRead(pin_y));
+
+  float x = x_f - 510.0f;
+  float y = y_f - 510.0f;
+
   float r = sqrt(pow(x, 2) + pow(y, 2));  //距離
   float rad = atan2(x, y);                //角度
   //bias倍率nを計算
-  n = 4.0 - r / 100.0;
+  n = max(0.0f, 4.0f - r / 100.0f);
 
   //flag 判定
   if (rad >= 0) {
@@ -96,7 +99,7 @@ void parameter_setting() {
     flag = false;
   }
   //delay計算(ウッドワースの公式を使う)
-  delay_sample = static_cast<int>(av * (abs(rad) - sin(abs(rad))) * 48000);
+  delay_sample = static_cast<int>(av * (fabsf(rad) - sinf(fabsf(rad))) * 48000);
 
   //bandstop_filter
   if (rad >= 0) {
@@ -117,8 +120,8 @@ void parameter_setting() {
   if (pan < -1) pan = -1;
   if (pan > 1) pan = 1;
   float k = 0.7f;  // 耳の遮蔽を表す係数
-  nL = n * (1.0f - k * max(0.0f, pan));
-  nR = n * (1.0f - k * max(0.0f, -pan));
+  nL = (1.0f - k * max(0.0f, pan));
+  nR = (1.0f - k * max(0.0f, -pan));
 }
 
 void bias_volume_filter(int16_t* ptr, int size) {
@@ -204,9 +207,6 @@ void init_bandstop(BandstopFilter* nf, float fs, float fc, float Q) {
   nf->a2 = b2 / a0;
   nf->b1 = a1 / a0;
   nf->b2 = a2 / a0;
-
-  nf->x1 = nf->x2 = 0.0f;
-  nf->y1 = nf->y2 = 0.0f;
 }
 
 float bandstop_process(BandstopFilter* nf, float x) {
@@ -224,15 +224,6 @@ float bandstop_process(BandstopFilter* nf, float x) {
 
 void run_bandstop_filter(int16_t* ptr, int size) {
 
-  static bool initialized = false;
-
-  // 初回だけ状態を初期化
-  if (!initialized) {
-    nfL.x1 = nfL.x2 = nfL.y1 = nfL.y2 = 0;
-    nfR.x1 = nfR.x2 = nfR.y1 = nfR.y2 = 0;
-    initialized = true;
-  }
-
   // ステレオ処理（L/R 交互）
   for (int i = 0; i < size; i += 2) {
 
@@ -248,13 +239,9 @@ void run_bandstop_filter(int16_t* ptr, int size) {
 }
 
 void force_mono(int16_t* ptr, int size) {
-  int16_t* L = ptr;
-  int16_t* R = ptr + 1;
 
-  for (int i = 0; i < size; i += 4) {
-    *R = *L;  // L の値を R にコピー
-    L += 2;
-    R += 2;
+  for (int i = 0; i < size; i += 2) {
+    ptr[i + 1] = ptr[i];
   }
 }
 
