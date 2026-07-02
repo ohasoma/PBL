@@ -13,7 +13,7 @@ OutputMixer *theMixer;
 static const int32_t channel_num = AS_CHANNEL_STEREO;
 static const int32_t bit_length = AS_BITLENGTH_16;
 static const int32_t frame_sample = 240;
-static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;  //(=7680)
+static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;  //(=960)
 
 static const int32_t proc_size = frame_size;
 static uint8_t proc_buffer[proc_size];  //ここにPCMデータが格納
