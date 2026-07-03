@@ -90,10 +90,13 @@ void parameter_setting() {
   x = x_f - 510.0f;
   y = y_f - 510.0f;
 
+  if (x < 50 || x > -50) x = 1;
+  if (y < 50 || y > -50) y = 1;
+
   r = sqrtf(x * x + y * y);  //距離
   rad = atan2(x, y);         //角度
   //bias倍率nを計算
-  n = (400.0f - r) / 100.0f;
+  n = 5.0f / ((r / 35.0f) + 1);
 
   //flag 判定
   if (rad >= 0) {
@@ -112,8 +115,8 @@ void parameter_setting() {
     fL = 9000 - 4500 * sin(abs(rad));
     fR = 9000 + 2000 * sin(abs(rad));
   }
-  QL = fL / 1000;
-  QR = fR / 1000;
+  QL = fL / 500;
+  QR = fR / 500;
 
   init_bandstop(&nfL, fs, fL, QL);
   init_bandstop(&nfR, fs, fR, QR);
