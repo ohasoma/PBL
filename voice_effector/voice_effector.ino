@@ -194,6 +194,26 @@ void saito_filter(int16_t *ptr, int size) {
 
 //-----------------------------加工処理の関数--------------------------------------
 
+void avoid_noise(int16_t *ptr, int size) {
+  int16_t *s = ptr;
+  int16_t peak = 1;
+  for (int cnt = 0; cnt < size; cnt += 2) {
+    int16_t a = abs(*s);
+    if (a > peak) peak = a;
+    s += 1;
+  }
+
+  if (peak > 1500) {
+    return;
+  } else {
+    s = ptr;
+    for (int cnt = 0; cnt < size; cnt += 2) {
+      *s = 0;
+      s += 1;
+    }
+  }
+}
+
 void gain_amp(int16_t *ptr, int size) {
   int16_t *ls = ptr;
   int16_t *rs = ls + 1;
