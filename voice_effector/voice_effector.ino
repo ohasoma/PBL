@@ -30,6 +30,7 @@ struct ProcessConfig {
   bool soft_crip_enabled;
   bool serial_send_enabled;
   bool delay_enabled;
+  bool ohara_serial;
 };
 
 ProcessConfig processConfig;
@@ -122,6 +123,11 @@ void serial_recieve() {
       Serial.print("serial_send: ");
       Serial.println(processConfig.serial_send_enabled);
     }
+    if(data == "ohara_serial"){
+      processConfig.ohara_serial = !processConfig.ohara_serial;
+      Serial.print("ohara_serial: ");
+      Serial.println(processConfig.ohara_serial);
+    }
     if (data == "status") {
       Serial.println("-----------status------------");
       Serial.print("amp: ");
@@ -134,6 +140,8 @@ void serial_recieve() {
       Serial.println(processConfig.delay_enabled);
       Serial.print("serial: ");
       Serial.println(processConfig.serial_send_enabled);
+      Serial.print("ohara_serial: ");
+      Serial.println(processConfig.ohara_serial);
       Serial.println("-----------------------------");
     }
   }
@@ -735,13 +743,14 @@ void setup() {
   processConfig.gain_amp_enabled = false;
   processConfig.serial_send_enabled = false;
   processConfig.delay_enabled = false;
+  processConfig.ohara_serial = false;
 }
 
 /**
  * @brief audio loop
  */
 void loop() {
-
+  if(processConfig.ohara_serial){
   Serial.print(x);
   Serial.print(" ");
   Serial.print(y);
@@ -755,6 +764,7 @@ void loop() {
   Serial.print(" ");
   Serial.println(QL);
   */
+  }
 
   if (millis() - current > 100) {
     adc_x = analogRead(A0);
