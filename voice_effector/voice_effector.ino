@@ -175,6 +175,7 @@ void serial_recieve() {
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t *ptr, int size) {
   //加工処理
+  avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
