@@ -37,7 +37,7 @@ ProcessConfig processConfig;
 //---------------------saito global variables--------------------------
 static const int32_t delay_buffer_size = frame_size * 100;
 static uint16_t delayedBuffer[delay_buffer_size];
-static int writePos = 0;
+static int writepos = 0;
 //---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
 
@@ -279,14 +279,14 @@ void delay(int16_t *ptr, int size) {
     int16_t tmp;
 
     tmp = *ls;
-    delayedBuffer[writePos] = tmp + delayedBuffer[writePos] / 4;
-    *ls = delayedBuffer[writePos];
+    delayedBuffer[writepos] = tmp + delayedBuffer[writepos] / 4;
+    *ls = delayedBuffer[writepos];
 
     tmp = *rs;
-    delayedBuffer[writePos + 1] = tmp + delayedBuffer[writePos + 1] / 4;
-    *rs = delayedBuffer[writePos + 1];
+    delayedBuffer[writepos + 1] = tmp + delayedBuffer[writepos + 1] / 4;
+    *rs = delayedBuffer[writepos + 1];
 
-    writePos += 2;
+    writepos += 2;
 
     if (writePos >= delay_buffer_size) writePos = 0;
 
