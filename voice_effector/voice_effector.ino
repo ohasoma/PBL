@@ -31,6 +31,7 @@ float x, y, r, rad;
 unsigned long current = 0;
 volatile int adc_x = 510;
 volatile int adc_y = 510;
+float nmax = 3.0f;
 
 //--bias_valume_filter--
 float n;
@@ -87,16 +88,16 @@ void parameter_setting() {
   x_f = 0.95f * x_f + 0.05f * adc_x;
   y_f = 0.95f * y_f + 0.05f * adc_y;
 
-  x = x_f - 510.0f;
-  y = y_f - 510.0f;
+  x = x_f - 510.0f + 10.0f;
+  y = -(y_f - 510.0f) - 43.0f;
 
-  if (x < 50 || x > -50) x = 1;
-  if (y < 50 || y > -50) y = 1;
+  if (x < 15 && x > -15) x = 0;
+  if (y < 15 && y > -15) y = 1;
 
   r = sqrtf(x * x + y * y);  //距離
   rad = atan2(x, y);         //角度
   //bias倍率nを計算
-  n = 5.0f / ((r / 35.0f) + 1);
+  n =  (279.0f * nmax) / (r * (nmax - 1.0f) + (280.0f - nmax));
 
   //flag 判定
   if (rad >= 0) {
@@ -499,21 +500,21 @@ void setup() {
  * @brief audio loop
  */
 void loop() {
-  /*
+  
   Serial.print(x);
   Serial.print(" ");
   Serial.print(y);
   Serial.print(" ");
   Serial.print(r);
   Serial.print(" ");
-  Serial.println(rad);
-  Serial.print(" ");
   Serial.println(n);
+  /*
   Serial.print(" ");
   Serial.println(nL);
   Serial.print(" ");
   Serial.println(QL);
-*/
+  */
+
   if (millis() - current > 100) {
     adc_x = analogRead(A0);
     adc_y = analogRead(A1);
