@@ -1,18 +1,21 @@
+// Spresense Arduino Libraries
 #include <FrontEnd.h>
 #include <OutputMixer.h>
 #include <MemoryUtil.h>
 #include <arch/board/board.h>
-#include <math.h>
 #include <Audio.h>
 #define max_delay 4800  // 最大遅延 100ms (48kHz)
 
-FrontEnd* theFrontEnd;
-OutputMixer* theMixer;
+//Utilities
+#include <math.h>
+
+FrontEnd *theFrontEnd;
+OutputMixer *theMixer;
 
 static const int32_t channel_num = AS_CHANNEL_STEREO;
 static const int32_t bit_length = AS_BITLENGTH_16;
 static const int32_t frame_sample = 240;
-static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;  //(=7680)
+static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;  //(=960)
 
 static const int32_t proc_size = frame_size;
 static uint8_t proc_buffer[proc_size];  //ここにPCMデータが格納
@@ -21,6 +24,21 @@ bool isCaptured = false;
 bool isEnd = false;
 bool ErrEnd = false;
 
+struct ProcessConfig {
+  bool gain_amp_enabled;
+  bool dynamics_modifier_enabled;
+  bool soft_crip_enabled;
+  bool serial_send_enabled;
+  bool delay_enabled;
+};
+
+ProcessConfig processConfig;
+
+//---------------------saito global variables--------------------------
+static const int32_t delay_buffer_size = frame_size * 100;
+static uint16_t delayedBuffer[delay_buffer_size];
+static int writePos = 0;
+//---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
 
 //--parameter_setting--
@@ -59,25 +77,230 @@ float fL, fR;
 float QL, QR;
 float fs = 48000.0f;  // サンプリング周波数
 
-//-----------------------------------------
-void signal_process(int16_t* ptr, int size) {
+//--------------------------------------------------------------------------------
+//テンプレート
+// void templete(int16_t* ptr, int size){
+//   int16_t *ls = ptr;
+//   int16_t *rs = ls + 1;
+//   //変数定義など
+//     for (int32_t cnt = 0; cnt < size; cnt += 4) {
+//     //ここに処理
+//     ls += 2;
+//     rs += 2;
+//   }
+// }
+
+//--------------------------------------------------------------------------------
+//シリアル通信
+void serial_recieve() {
+  if (Serial.available() > 0) {
+    // シリアルデータの受信 (改行まで)
+    String data = Serial.readStringUntil('\n');
+
+    if (data == "amp") {
+      processConfig.gain_amp_enabled = !processConfig.gain_amp_enabled;
+      Serial.print("gain_amp: ");
+      Serial.println(processConfig.gain_amp_enabled);
+    }
+    if (data == "dynamics") {
+      processConfig.dynamics_modifier_enabled = !processConfig.dynamics_modifier_enabled;
+      Serial.print("dynaimcs_modifier: ");
+      Serial.println(processConfig.dynamics_modifier_enabled);
+    }
+    if (data == "softcrip") {
+      processConfig.soft_crip_enabled = !processConfig.soft_crip_enabled;
+      Serial.print("soft_crip: ");
+      Serial.println(processConfig.soft_crip_enabled);
+    }
+    if (data == "delay") {
+      processConfig.delay_enabled = !processConfig.delay_enabled;
+      Serial.print("delay: ");
+      Serial.println(processConfig.delay_enabled);
+    }
+    if (data == "serial") {
+      processConfig.serial_send_enabled = !processConfig.serial_send_enabled;
+      Serial.print("serial_send: ");
+      Serial.println(processConfig.serial_send_enabled);
+    }
+    if (data == "status") {
+      Serial.println("-----------status------------");
+      Serial.print("amp: ");
+      Serial.println(processConfig.gain_amp_enabled);
+      Serial.print("dynamics: ");
+      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.print("softcrip: ");
+      Serial.println(processConfig.soft_crip_enabled);
+      Serial.print("delay: ");
+      Serial.println(processConfig.delay_enabled);
+      Serial.print("serial: ");
+      Serial.println(processConfig.serial_send_enabled);
+      Serial.println("-----------------------------");
+    }
+  }
+}
+
+
+
+
+/**
+ * @brief Sample singnal Processing function
+ *
+ * @param [in] uint16_t   ptr
+ * @param [in] int        size
+ */
+void signal_process(int16_t *ptr, int size) {
   main_filter(ptr, size);
 }
-//--------------------------------------------------------------------------------
-void saito_filter(int16_t* ptr, int size) {
+
+  //--------------------------------------------------------------------------------
+void saito_filter(int16_t *ptr, int size) {
   //加工処理
+  avoid_noise(ptr, size);
+  if (processConfig.gain_amp_enabled) {
+    gain_amp(ptr, size);
+  }
+  if (processConfig.dynamics_modifier_enabled) {
+    dynamics_modifier(ptr, size);
+  }
+  if (processConfig.soft_crip_enabled) {
+    soft_crip(ptr, size);
+  }
+  if (processConfig.delay_enabled) {
+    delay(ptr, size);
+  }
+  if (processConfig.serial_send_enabled) {
+    Serial.println(*ptr);
+  }
 }
+
+//-----------------------------加工処理の関数--------------------------------------
+
+void avoid_noise(int16_t *ptr, int size) {
+  int16_t *s = ptr;
+  int16_t peak = 1;
+  for (int cnt = 0; cnt < size; cnt += 2) {
+    int16_t a = abs(*s);
+    if (a > peak) peak = a;
+    s += 1;
+  }
+
+  if (peak > 1500) {
+    return;
+  } else {
+    s = ptr;
+    for (int cnt = 0; cnt < size; cnt += 2) {
+      *s = 0;
+      s += 1;
+    }
+  }
+}
+
+void gain_amp(int16_t *ptr, int size) {
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+  int16_t gain_std = 15000;
+  int16_t peak = 1;
+  for (int cnt = 0; cnt < size; cnt += 4) {
+    int16_t a = abs(*ls);
+    int16_t b = abs(*rs);
+    if (a > peak) peak = a;
+    if (b > peak) peak = b;
+    ls += 2;
+    rs += 2;
+  }
+
+  if (peak < 1500) return;
+
+  float amp = gain_std / peak;
+  ls = ptr;
+  rs = ls + 1;
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int32_t tmp;
+
+    tmp = *ls;
+    *ls = int16_t(tmp * amp);
+    tmp = *rs;
+    *rs = int16_t(tmp * amp);
+
+    ls += 2;
+    rs += 2;
+  }
+}
+
+void dynamics_modifier(int16_t *ptr, int size) {
+  float freq = 1.0;
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+  float gain = (1.0f + sinf(0.002f * PI * freq * float(millis()))) / 2.0f;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int32_t tmp;
+
+    tmp = float(*ls);
+    *ls = int16_t(tmp * gain);
+    tmp = float(*rs);
+    *rs = int16_t(tmp * gain);
+
+    ls += 2;
+    rs += 2;
+  }
+}
+
+void soft_crip(int16_t *ptr, int size) {
+  int16_t thresholdplus = 8000;
+  int16_t thresholdminus = -8000;
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    if (*ls > thresholdplus) {
+      *ls = thresholdplus * 2;
+    }
+
+    if (*ls < thresholdminus) {
+      *ls = thresholdminus * 2;
+    }
+
+    if (*rs > thresholdplus) {
+      *rs = thresholdplus * 2;
+    }
+
+    if (*rs < thresholdminus) {
+      *rs = thresholdminus * 2;
+    }
+  }
+}
+
+void delay(int16_t *ptr, int size) {
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+  //変数定義など
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int16_t tmp;
+
+    tmp = *ls;
+    delayedBuffer[writePos] = tmp + delayedBuffer[writePos] / 4;
+    *ls = delayedBuffer[writePos];
+
+    tmp = *rs;
+    delayedBuffer[writePos + 1] = tmp + delayedBuffer[writePos + 1] / 4;
+    *rs = delayedBuffer[writePos + 1];
+
+    writePos += 2;
+
+    if (writePos >= delay_buffer_size) writePos = 0;
+
+    ls += 2;
+    rs += 2;
+  }
+}
+
+//-------------------------------------------------------------------------------- 
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
   run_bandstop_filter(ptr, size);
   delay_filter(ptr, size);
-}
-
-void main_filter(int16_t* ptr, int size) {
-  force_mono(ptr, size);  //LをRにコピー
-  saito_filter(ptr, size);
-  ohara_filter(ptr, size);
 }
 
 void parameter_setting() {
@@ -149,12 +372,11 @@ void bias_volume_filter(int16_t* ptr, int size) {
 
     *L = (int16_t)l;
     *R = (int16_t)r;
-
+    
     L += 2;
     R += 2;
   }
 }
-
 
 void LR_volume_filter(int16_t* ptr, int size) {
 
@@ -168,7 +390,6 @@ void LR_volume_filter(int16_t* ptr, int size) {
 
     if (l > 32767) l = 32767;
     if (l < -32768) l = -32768;
-
     if (r > 32767) r = 32767;
     if (r < -32768) r = -32768;
 
@@ -251,6 +472,9 @@ float bandstop_process(BandstopFilter* nf, float x) {
   return y;
 }
 
+
+
+
 void run_bandstop_filter(int16_t* ptr, int size) {
 
   int16_t* L = ptr;
@@ -283,6 +507,12 @@ void force_mono(int16_t* ptr, int size) {
   }
 }
 
+    
+void main_filter(int16_t *ptr, int size) {
+  force_mono(ptr, size);  //LをRにコピー
+  saito_filter(ptr, size);
+  ohara_filter(ptr, size);
+}
 //--------------------------------------------------------------------------------
 
 /**
@@ -404,7 +634,7 @@ static void outmixer0_send_callback(int32_t identifier, bool is_end) {
  */
 bool execute_aframe() {
   isCaptured = false;
-  signal_process((int16_t*)proc_buffer, proc_size);
+  signal_process((int16_t *)proc_buffer, proc_size);
 
   AsPcmDataParam pcm_param;
 
@@ -460,6 +690,10 @@ void setup() {
   /* Clear the buffer for singnal processing */
   memset(proc_buffer, 0, proc_size);
 
+  //---------------------------------------------------------
+  memset(delayedBuffer, 0, delay_buffer_size);
+  //---------------------------------------------------------
+
   /* Begin objects */
   theFrontEnd = FrontEnd::getInstance();
   theMixer = OutputMixer::getInstance();
@@ -494,6 +728,13 @@ void setup() {
   board_external_amp_mute_control(false);
 
   theFrontEnd->start();
+
+  /* process config initialize*/
+  processConfig.dynamics_modifier_enabled = false;
+  processConfig.soft_crip_enabled = false;
+  processConfig.gain_amp_enabled = false;
+  processConfig.serial_send_enabled = false;
+  processConfig.delay_enabled = false;
 }
 
 /**
@@ -537,6 +778,10 @@ void loop() {
     isEnd = false;
     goto exitCapturing;
   }
+
+  //changed
+  serial_recieve();
+  //till here
 
   return;
 
