@@ -48,73 +48,6 @@ void signal_process(int16_t *ptr, int size) {
   main_filter(ptr, size);
 }
 
-/**
- * @brief RC-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void rc_filter(int16_t *ptr, int size) {
-  /* Example : RC filter for 16bit PCM */
-
-  static const int PeakLevel = 32700;
-  static const int LevelGain = 2;
-
-  int16_t *ls = (int16_t *)ptr;
-  int16_t *rs = ls + 1;
-
-  static int16_t ls_l = 0;
-  static int16_t rs_l = 0;
-
-  if (!ls_l && !rs_l) {
-    ls_l = *ls * LevelGain;
-    rs_l = *rs * LevelGain;
-  }
-
-  for (int cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    *ls = *ls * LevelGain;
-    *rs = *rs * LevelGain;
-
-    tmp = (ls_l * 98 / 100) + (*ls * 2 / 100);
-    *ls = clip(tmp, PeakLevel);
-    tmp = (rs_l * 98 / 100) + (*rs * 2 / 100);
-    *rs = clip(tmp, PeakLevel);
-
-    ls_l = *ls;
-    rs_l = *rs;
-
-    ls += 2;
-    rs += 2;
-  }
-}
-
-/**
- * @brief Distortion(Peak-cut)-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void distortion_filter(int16_t *ptr, int size) {
-  /* Example : Distortion filter for 16bit PCM */
-
-  static const int PeakLevel = 170;
-
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
-
-  for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    tmp = *ls * 4 / 3;
-    *ls = clip(tmp, PeakLevel);
-    tmp = *rs * 4 / 3;
-    *rs = clip(tmp, PeakLevel);
-
-    ls += 2;
-    rs += 2;
-  }
-}
-
 //--------------------------------------------------------------------------------
 //テンプレート
 // void templete(int16_t* ptr, int size){
@@ -160,13 +93,18 @@ void serial_recieve() {
       Serial.print("serial_send: ");
       Serial.println(processConfig.serial_send_enabled);
     }
-    if (data == "help") {
-      Serial.println("----------keywords-----------");
-      Serial.println("amp");
-      Serial.println("dynamics");
-      Serial.println("softcrip");
-      Serial.println("delay");
-      Serial.println("serial");
+    if (data == "status") {
+      Serial.println("-----------status------------");
+      Serial.print("amp: ");
+      Serial.println(processConfig.gain_amp_enabled);
+      Serial.print("dynamics: ");
+      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.print("softcrip: ");
+      Serial.println(processConfig.soft_crip_enabled);
+      Serial.print("delay: ");
+      Serial.println(processConfig.delay_enabled);
+      Serial.print("serial: ");
+      Serial.println(processConfig.serial_send_enabled);
       Serial.println("-----------------------------");
     }
   }
