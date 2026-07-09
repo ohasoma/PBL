@@ -9,8 +9,8 @@
 //Utilities
 #include <math.h>
 
-FrontEnd *theFrontEnd;
-OutputMixer *theMixer;
+FrontEnd* theFrontEnd;
+OutputMixer* theMixer;
 
 static const int32_t channel_num = AS_CHANNEL_STEREO;
 static const int32_t bit_length = AS_BITLENGTH_16;
@@ -37,7 +37,7 @@ ProcessConfig processConfig;
 //---------------------saito global variables--------------------------
 static const int32_t delay_buffer_size = frame_size * 100;
 static uint16_t delayedBuffer[delay_buffer_size];
-static int writePos = 0;
+static int accessPos = 0;
 //---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
 
@@ -148,12 +148,12 @@ void serial_recieve() {
  * @param [in] uint16_t   ptr
  * @param [in] int        size
  */
-void signal_process(int16_t *ptr, int size) {
+void signal_process(int16_t* ptr, int size) {
   main_filter(ptr, size);
 }
 
-  //--------------------------------------------------------------------------------
-void saito_filter(int16_t *ptr, int size) {
+//--------------------------------------------------------------------------------
+void saito_filter(int16_t* ptr, int size) {
   //加工処理
   avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
@@ -175,8 +175,8 @@ void saito_filter(int16_t *ptr, int size) {
 
 //-----------------------------加工処理の関数--------------------------------------
 
-void avoid_noise(int16_t *ptr, int size) {
-  int16_t *s = ptr;
+void avoid_noise(int16_t* ptr, int size) {
+  int16_t* s = ptr;
   int16_t peak = 1;
   for (int cnt = 0; cnt < size; cnt += 2) {
     int16_t a = abs(*s);
@@ -195,9 +195,9 @@ void avoid_noise(int16_t *ptr, int size) {
   }
 }
 
-void gain_amp(int16_t *ptr, int size) {
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
+void gain_amp(int16_t* ptr, int size) {
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
   int16_t gain_std = 15000;
   int16_t peak = 1;
   for (int cnt = 0; cnt < size; cnt += 4) {
@@ -227,10 +227,10 @@ void gain_amp(int16_t *ptr, int size) {
   }
 }
 
-void dynamics_modifier(int16_t *ptr, int size) {
+void dynamics_modifier(int16_t* ptr, int size) {
   float freq = 1.0;
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
   float gain = (1.0f + sinf(0.002f * PI * freq * float(millis()))) / 2.0f;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
@@ -246,11 +246,11 @@ void dynamics_modifier(int16_t *ptr, int size) {
   }
 }
 
-void soft_crip(int16_t *ptr, int size) {
+void soft_crip(int16_t* ptr, int size) {
   int16_t thresholdplus = 8000;
   int16_t thresholdminus = -8000;
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     if (*ls > thresholdplus) {
@@ -271,31 +271,31 @@ void soft_crip(int16_t *ptr, int size) {
   }
 }
 
-void delay(int16_t *ptr, int size) {
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
+void delay(int16_t* ptr, int size) {
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
   //変数定義など
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     int16_t tmp;
 
     tmp = *ls;
-    delayedBuffer[writePos] = tmp + delayedBuffer[writePos] / 4;
-    *ls = delayedBuffer[writePos];
+    delayedBuffer[accessPos] = tmp + delayedBuffer[accessPos] / 4;
+    *ls = delayedBuffer[accessPos];
 
     tmp = *rs;
-    delayedBuffer[writePos + 1] = tmp + delayedBuffer[writePos + 1] / 4;
-    *rs = delayedBuffer[writePos + 1];
+    delayedBuffer[accessPos + 1] = tmp + delayedBuffer[accessPos + 1] / 4;
+    *rs = delayedBuffer[accessPos + 1];
 
-    writePos += 2;
+    accessPos += 2;
 
-    if (writePos >= delay_buffer_size) writePos = 0;
+    if (accessPos >= delay_buffer_size) accessPos = 0;
 
     ls += 2;
     rs += 2;
   }
 }
 
-//-------------------------------------------------------------------------------- 
+//--------------------------------------------------------------------------------
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
@@ -320,7 +320,7 @@ void parameter_setting() {
   r = sqrtf(x * x + y * y);  //距離
   rad = atan2(x, y);         //角度
   //bias倍率nを計算
-  n =  (279.0f * nmax) / (r * (nmax - 1.0f) + (280.0f - nmax));
+  n = (279.0f * nmax) / (r * (nmax - 1.0f) + (280.0f - nmax));
 
   //flag 判定
   if (rad >= 0) {
@@ -372,7 +372,7 @@ void bias_volume_filter(int16_t* ptr, int size) {
 
     *L = (int16_t)l;
     *R = (int16_t)r;
-    
+
     L += 2;
     R += 2;
   }
@@ -507,8 +507,8 @@ void force_mono(int16_t* ptr, int size) {
   }
 }
 
-    
-void main_filter(int16_t *ptr, int size) {
+
+void main_filter(int16_t* ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
   saito_filter(ptr, size);
   ohara_filter(ptr, size);
@@ -634,7 +634,7 @@ static void outmixer0_send_callback(int32_t identifier, bool is_end) {
  */
 bool execute_aframe() {
   isCaptured = false;
-  signal_process((int16_t *)proc_buffer, proc_size);
+  signal_process((int16_t*)proc_buffer, proc_size);
 
   AsPcmDataParam pcm_param;
 
@@ -741,7 +741,7 @@ void setup() {
  * @brief audio loop
  */
 void loop() {
-  
+
   Serial.print(x);
   Serial.print(" ");
   Serial.print(y);
