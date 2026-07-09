@@ -18,15 +18,22 @@ static const int32_t frame_size = frame_sample * (bit_length / 8) * channel_num;
 static const int32_t proc_size = frame_size;
 static uint8_t proc_buffer[proc_size];  //ここにPCMデータが格納
 
+//---------------------saito global variables--------------------------
+static const int32_t delay_buffer_size = frame_size * 100;
+static uint16_t delayedBuffer[delay_buffer_size];
+static int writePos = 0;
+//---------------------------------------------------------------------
+
 bool isCaptured = false;
 bool isEnd = false;
 bool ErrEnd = false;
 
 struct ProcessConfig {
   bool gain_amp_enabled;
-  bool dynamics_modifier_enebled;
-  bool soft_crip_enebled;
-  bool serial_send_enebled;
+  bool dynamics_modifier_enabled;
+  bool soft_crip_enabled;
+  bool serial_send_enabled;
+  bool delay_enabled;
 };
 
 ProcessConfig processConfig;
@@ -39,73 +46,6 @@ ProcessConfig processConfig;
  */
 void signal_process(int16_t *ptr, int size) {
   main_filter(ptr, size);
-}
-
-/**
- * @brief RC-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void rc_filter(int16_t *ptr, int size) {
-  /* Example : RC filter for 16bit PCM */
-
-  static const int PeakLevel = 32700;
-  static const int LevelGain = 2;
-
-  int16_t *ls = (int16_t *)ptr;
-  int16_t *rs = ls + 1;
-
-  static int16_t ls_l = 0;
-  static int16_t rs_l = 0;
-
-  if (!ls_l && !rs_l) {
-    ls_l = *ls * LevelGain;
-    rs_l = *rs * LevelGain;
-  }
-
-  for (int cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    *ls = *ls * LevelGain;
-    *rs = *rs * LevelGain;
-
-    tmp = (ls_l * 98 / 100) + (*ls * 2 / 100);
-    *ls = clip(tmp, PeakLevel);
-    tmp = (rs_l * 98 / 100) + (*rs * 2 / 100);
-    *rs = clip(tmp, PeakLevel);
-
-    ls_l = *ls;
-    rs_l = *rs;
-
-    ls += 2;
-    rs += 2;
-  }
-}
-
-/**
- * @brief Distortion(Peak-cut)-Filter function
- *
- * @param [in] pcm_param    AsPcmDataParam type
- */
-void distortion_filter(int16_t *ptr, int size) {
-  /* Example : Distortion filter for 16bit PCM */
-
-  static const int PeakLevel = 170;
-
-  int16_t *ls = ptr;
-  int16_t *rs = ls + 1;
-
-  for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    int32_t tmp;
-
-    tmp = *ls * 4 / 3;
-    *ls = clip(tmp, PeakLevel);
-    tmp = *rs * 4 / 3;
-    *rs = clip(tmp, PeakLevel);
-
-    ls += 2;
-    rs += 2;
-  }
 }
 
 //--------------------------------------------------------------------------------
@@ -123,37 +63,48 @@ void distortion_filter(int16_t *ptr, int size) {
 
 //--------------------------------------------------------------------------------
 //シリアル通信
-void serial_recieve(){
-  if (Serial.available() > 0 ) {
+void serial_recieve() {
+  if (Serial.available() > 0) {
     // シリアルデータの受信 (改行まで)
     String data = Serial.readStringUntil('\n');
 
-    if(data == "amp"){
+    if (data == "amp") {
       processConfig.gain_amp_enabled = !processConfig.gain_amp_enabled;
       Serial.print("gain_amp: ");
       Serial.println(processConfig.gain_amp_enabled);
     }
-    if(data == "dynamics"){
-      processConfig.dynamics_modifier_enebled = !processConfig.dynamics_modifier_enebled;
+    if (data == "dynamics") {
+      processConfig.dynamics_modifier_enabled = !processConfig.dynamics_modifier_enabled;
       Serial.print("dynaimcs_modifier: ");
-      Serial.println(processConfig.dynamics_modifier_enebled);
+      Serial.println(processConfig.dynamics_modifier_enabled);
     }
-    if(data == "softcrip"){
-      processConfig.soft_crip_enebled = !processConfig.soft_crip_enebled;
+    if (data == "softcrip") {
+      processConfig.soft_crip_enabled = !processConfig.soft_crip_enabled;
       Serial.print("soft_crip: ");
-      Serial.println(processConfig.soft_crip_enebled);
+      Serial.println(processConfig.soft_crip_enabled);
     }
-    if(data == "serial"){
-      processConfig.serial_send_enebled = !processConfig.serial_send_enebled;
+    if (data == "delay") {
+      processConfig.delay_enabled = !processConfig.delay_enabled;
+      Serial.print("delay: ");
+      Serial.println(processConfig.delay_enabled);
+    }
+    if (data == "serial") {
+      processConfig.serial_send_enabled = !processConfig.serial_send_enabled;
       Serial.print("serial_send: ");
-      Serial.println(processConfig.serial_send_enebled);
+      Serial.println(processConfig.serial_send_enabled);
     }
-    if(data == "help"){
-      Serial.println("----------keywords-----------");
-      Serial.println("amp");
-      Serial.println("dynamics");
-      Serial.println("softcrip");
-      Serial.println("serial");
+    if (data == "status") {
+      Serial.println("-----------status------------");
+      Serial.print("amp: ");
+      Serial.println(processConfig.gain_amp_enabled);
+      Serial.print("dynamics: ");
+      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.print("softcrip: ");
+      Serial.println(processConfig.soft_crip_enabled);
+      Serial.print("delay: ");
+      Serial.println(processConfig.delay_enabled);
+      Serial.print("serial: ");
+      Serial.println(processConfig.serial_send_enabled);
       Serial.println("-----------------------------");
     }
   }
@@ -162,21 +113,45 @@ void serial_recieve(){
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t *ptr, int size) {
   //加工処理
+  avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
-  if (processConfig.dynamics_modifier_enebled) {
+  if (processConfig.dynamics_modifier_enabled) {
     dynamics_modifier(ptr, size);
   }
-  if (processConfig.soft_crip_enebled) {
+  if (processConfig.soft_crip_enabled) {
     soft_crip(ptr, size);
   }
-  if (processConfig.serial_send_enebled) {
+  if (processConfig.delay_enabled) {
+    delay(ptr, size);
+  }
+  if (processConfig.serial_send_enabled) {
     Serial.println(*ptr);
   }
 }
 
 //-----------------------------加工処理の関数--------------------------------------
+
+void avoid_noise(int16_t *ptr, int size) {
+  int16_t *s = ptr;
+  int16_t peak = 1;
+  for (int cnt = 0; cnt < size; cnt += 2) {
+    int16_t a = abs(*s);
+    if (a > peak) peak = a;
+    s += 1;
+  }
+
+  if (peak > 1500) {
+    return;
+  } else {
+    s = ptr;
+    for (int cnt = 0; cnt < size; cnt += 2) {
+      *s = 0;
+      s += 1;
+    }
+  }
+}
 
 void gain_amp(int16_t *ptr, int size) {
   int16_t *ls = ptr;
@@ -192,7 +167,7 @@ void gain_amp(int16_t *ptr, int size) {
     rs += 2;
   }
 
-  if(peak < 1500) return;
+  if (peak < 1500) return;
 
   float amp = gain_std / peak;
   ls = ptr;
@@ -256,6 +231,34 @@ void soft_crip(int16_t *ptr, int size) {
     rs += 2;
   }
 }
+
+void delay(int16_t *ptr, int size) {
+  int16_t *ls = ptr;
+  int16_t *rs = ls + 1;
+  //変数定義など
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    int16_t tmp;
+
+    tmp = *ls;
+    delayedBuffer[writePos] = tmp + delayedBuffer[writePos] / 4;
+    *ls = delayedBuffer[writePos];
+
+    tmp = *rs;
+    delayedBuffer[writePos + 1] = tmp + delayedBuffer[writePos + 1] / 4;
+    *rs = delayedBuffer[writePos + 1];
+
+    writePos += 2;
+
+    if (writePos >= delay_buffer_size) writePos = 0;
+
+    ls += 2;
+    rs += 2;
+  }
+}
+
+
+
+
 //--------------------------------------------------------------------------------
 void ohara_filter(int16_t *ptr, int size) {
 
@@ -478,6 +481,10 @@ void setup() {
   /* Clear the buffer for singnal processing */
   memset(proc_buffer, 0, proc_size);
 
+  //---------------------------------------------------------
+  memset(delayedBuffer, 0, delay_buffer_size);
+  //---------------------------------------------------------
+
   /* Begin objects */
   theFrontEnd = FrontEnd::getInstance();
   theMixer = OutputMixer::getInstance();
@@ -514,10 +521,11 @@ void setup() {
   theFrontEnd->start();
 
   /* process config initialize*/
-  processConfig.dynamics_modifier_enebled = false;
-  processConfig.soft_crip_enebled = false;
+  processConfig.dynamics_modifier_enabled = false;
+  processConfig.soft_crip_enabled = false;
   processConfig.gain_amp_enabled = false;
-  processConfig.serial_send_enebled = false;
+  processConfig.serial_send_enabled = false;
+  processConfig.delay_enabled = false;
 }
 
 /**
