@@ -31,13 +31,17 @@ struct ProcessConfig {
   bool soft_crip_enabled;
   bool serial_send_enabled;
   bool delay_enabled;
+  bool ohara_serial;
+  bool all_serial;
 };
 
-ProcessConfig processConfig;
+static ProcessConfig processConfig;
 
 //---------------------saito global variables--------------------------
 static const int32_t delay_buffer_size = frame_size * 100;
-static uint16_t delayedBuffer[delay_buffer_size];
+static int16_t delayedBuffer[delay_buffer_size];
+static int delay_time_ms = 500;//<=1000
+static int delay_buffer_diff = delay_time_ms * 96;
 static int accessPos = 0;
 //---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
@@ -123,6 +127,16 @@ void serial_recieve() {
       Serial.print("serial_send: ");
       Serial.println(processConfig.serial_send_enabled);
     }
+    if(data == "ohara_serial"){
+      processConfig.ohara_serial = !processConfig.ohara_serial;
+      Serial.print("ohara_serial: ");
+      Serial.println(processConfig.ohara_serial);
+    }
+    if(data == "all_serial"){
+      processConfig.all_serial = !processConfig.all_serial;
+      Serial.print("all_serial: ");
+      Serial.println(processConfig.all_serial);
+    }
     if (data == "status") {
       Serial.println("-----------status------------");
       Serial.print("amp: ");
@@ -135,6 +149,10 @@ void serial_recieve() {
       Serial.println(processConfig.delay_enabled);
       Serial.print("serial: ");
       Serial.println(processConfig.serial_send_enabled);
+      Serial.print("ohara_serial: ");
+      Serial.println(processConfig.ohara_serial);
+      Serial.print("all_serial: ");
+      Serial.println(processConfig.all_serial);
       Serial.println("-----------------------------");
     }
   }
@@ -170,7 +188,14 @@ void saito_filter(int16_t* ptr, int size) {
     delay(ptr, size);
   }
   if (processConfig.serial_send_enabled) {
+    Serial.print(-16384);       // Your absolute minimum visible Y-value
+    Serial.print(",");
+    Serial.print(16384);    // Your absolute maximum visible Y-value
+    Serial.print(",");
     Serial.println(*ptr);
+  }
+  if(processConfig.all_serial){
+    all_data_serial_send(ptr, size);
   }
 }
 
@@ -255,19 +280,19 @@ void soft_crip(int16_t* ptr, int size) {
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     if (*ls > thresholdplus) {
-      *ls = thresholdplus * 2;
+      *ls = thresholdplus;
     }
 
     if (*ls < thresholdminus) {
-      *ls = thresholdminus * 2;
+      *ls = thresholdminus;
     }
 
     if (*rs > thresholdplus) {
-      *rs = thresholdplus * 2;
+      *rs = thresholdplus;
     }
 
     if (*rs < thresholdminus) {
-      *rs = thresholdminus * 2;
+      *rs = thresholdminus;
     }
   }
 }
@@ -279,13 +304,14 @@ void delay(int16_t* ptr, int size) {
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     int16_t tmp;
 
-    tmp = *ls;
+    int fetchPos = (((accessPos - delay_buffer_diff) % delay_buffer_size) + delay_buffer_size) % delay_buffer_size;
 
-    delayedBuffer[accessPos] = tmp + delayedBuffer[accessPos] / 4;
+    tmp = *ls;
+    delayedBuffer[accessPos] = tmp + delayedBuffer[fetchPos] / 4;
     *ls = delayedBuffer[accessPos];
 
     tmp = *rs;
-    delayedBuffer[accessPos + 1] = tmp + delayedBuffer[accessPos + 1] / 4;
+    delayedBuffer[accessPos + 1] = tmp + delayedBuffer[fetchPos + 1] / 4;
     *rs = delayedBuffer[accessPos + 1];
 
     accessPos += 2;
@@ -297,6 +323,14 @@ void delay(int16_t* ptr, int size) {
   }
 }
 
+void all_data_serial_send(int16_t* ptr, int size){
+  int16_t* ls = ptr;
+
+  for(int32_t cnt = 0; cnt < size; cnt += 4){
+    Serial.println(*ls);
+    ls += 16;
+  }
+}
 //--------------------------------------------------------------------------------
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
@@ -777,13 +811,15 @@ void setup() {
   processConfig.gain_amp_enabled = false;
   processConfig.serial_send_enabled = false;
   processConfig.delay_enabled = false;
+  processConfig.ohara_serial = false;
+  processConfig.all_serial = false;
 }
 
 /**
  * @brief audio loop
  */
 void loop() {
-
+  if(processConfig.ohara_serial){
   Serial.print(x);
   Serial.print(" ");
   Serial.print(y);
@@ -797,6 +833,7 @@ void loop() {
   Serial.print(" ");
   Serial.println(QL);
   */
+  }
 
   if (millis() - current > 100) {
     adc_x = analogRead(A0);
