@@ -345,28 +345,20 @@ void parameter_setting() {
   }
 
   if (abs_rad > (M_PI / 2.0f)) {
-    // 【後ろにいるとき】
-    // 1kHz付近を強調（山）し、高音域（fL, fR）を大きくデシベルで削る（谷）
-    // 後ろに回り込むほど（abs_radがπに近づくほど）効果を強くする
-    float rear_factor = (abs_rad - (M_PI / 2.0f)) / (M_PI / 2.0f);  // 0.0(真横) 〜 1.0(真後ろ)
 
-    // 後ろからの音は高音(fL, fR)をガッツリ削る (例: 最大 -12dB の谷)
+    float rear_factor = (abs_rad - (M_PI / 2.0f)) / (M_PI / 2.0f);
     dBL = -12.0f * rear_factor;
     dBR = -12.0f * rear_factor;
 
-    // ※もし「1kHzの強調」も同時にやりたい場合は、直列にもう一つEQを繋ぐのが理想ですが、
-    // まずはこの高音のノッチ（谷）を再現するだけでも、劇的に「後ろ感」が出ます。
-
-    // 後ろの音は耳介で遮られて少しマイルドに変化するため、Q値を少し低め（広め）にする
+  
     QL = (fL / 500.0f) * 0.5f;
     QR = (fR / 500.0f) * 0.5f;
 
   } else {
-    // 【前にいるとき】
-    // 前方からの音はクッキリ聴こえるため、高音域をわずかに強調するか、フラット(0dB)にする
-    float front_factor = 1.0f - (abs_rad / (M_PI / 2.0f));  // 1.0(真前) 〜 0.0(真横)
+    
+    float front_factor = 1.0f - (abs_rad / (M_PI / 2.0f));
 
-    dBL = 2.0f * front_factor;  // 前方にいるときは少し高音をシャープに強調 (+2dBの山)
+    dBL = 2.0f * front_factor;
     dBR = 2.0f * front_factor;
 
     QL = fL / 500.0f;
