@@ -4,6 +4,7 @@
 #include <MemoryUtil.h>
 #include <arch/board/board.h>
 #include <Audio.h>
+#include <stdint.h>
 #define max_delay 4800  // 最大遅延 100ms (48kHz)
 
 //Utilities
@@ -37,11 +38,7 @@ ProcessConfig processConfig;
 //---------------------saito global variables--------------------------
 static const int32_t delay_buffer_size = frame_size * 100;
 static uint16_t delayedBuffer[delay_buffer_size];
-<<<<<<< HEAD
-static int writepos = 0;
-=======
 static int accessPos = 0;
->>>>>>> origin/main
 //---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
 
@@ -68,17 +65,17 @@ static int16_t delayBufL[max_delay];
 static int16_t delayBufR[max_delay];
 int writePos = 0;
 
-//--bandstop_filter--
+//--ピーキングEQ--
 typedef struct {
   float a0, a1, a2;
   float b1, b2;
   float x1, x2;
   float y1, y2;
-} BandstopFilter;
-static BandstopFilter nfL;
-static BandstopFilter nfR;
+} PeakingEQ;
+static PeakingEQ peL, peR;
 float fL, fR;
 float QL, QR;
+float dBL, dBR;
 float fs = 48000.0f;  // サンプリング周波数
 
 //--------------------------------------------------------------------------------
@@ -284,14 +281,14 @@ void delay(int16_t* ptr, int size) {
 
     tmp = *ls;
 
-    delayedBuffer[writepos] = tmp + delayedBuffer[writepos] / 4;
-    *ls = delayedBuffer[writepos];
+    delayedBuffer[accessPos] = tmp + delayedBuffer[accessPos] / 4;
+    *ls = delayedBuffer[accessPos];
 
     tmp = *rs;
-    delayedBuffer[writepos + 1] = tmp + delayedBuffer[writepos + 1] / 4;
-    *rs = delayedBuffer[writepos + 1];
+    delayedBuffer[accessPos + 1] = tmp + delayedBuffer[accessPos + 1] / 4;
+    *rs = delayedBuffer[accessPos + 1];
 
-    writepos += 2;
+    accessPos += 2;
 
     if (accessPos >= delay_buffer_size) accessPos = 0;
 
@@ -304,7 +301,7 @@ void delay(int16_t* ptr, int size) {
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
-  run_bandstop_filter(ptr, size);
+  run_peaking_eq_filter(ptr, size);
   delay_filter(ptr, size);
 }
 
@@ -336,19 +333,53 @@ void parameter_setting() {
   //delay計算(ウッドワースの公式を使う)
   delay_sample = static_cast<int>(av * (fabsf(rad) - sinf(fabsf(rad))) * 48000);
 
-  //bandstop_filter
-  if (rad >= 0) {
-    fR = 9000 - 4500 * sin(abs(rad));
-    fL = 9000 + 2000 * sin(abs(rad));
-  } else {
-    fL = 9000 - 4500 * sin(abs(rad));
-    fR = 9000 + 2000 * sin(abs(rad));
-  }
-  QL = fL / 500;
-  QR = fR / 500;
+  //peaking_eq
+  float abs_rad = fabsf(rad);
 
-  init_bandstop(&nfL, fs, fL, QL);
-  init_bandstop(&nfR, fs, fR, QR);
+  if (rad >= 0) {
+    fR = 9000 - 4500 * sinf(abs_rad);
+    fL = 9000 + 2000 * sinf(abs_rad);
+  } else {
+    fL = 9000 - 4500 * sinf(abs_rad);
+    fR = 9000 + 2000 * sinf(abs_rad);
+  }
+
+  if (abs_rad > (M_PI / 2.0f)) {
+    // 【後ろにいるとき】
+    // 1kHz付近を強調（山）し、高音域（fL, fR）を大きくデシベルで削る（谷）
+    // 後ろに回り込むほど（abs_radがπに近づくほど）効果を強くする
+    float rear_factor = (abs_rad - (M_PI / 2.0f)) / (M_PI / 2.0f);  // 0.0(真横) 〜 1.0(真後ろ)
+
+    // 後ろからの音は高音(fL, fR)をガッツリ削る (例: 最大 -12dB の谷)
+    dBL = -12.0f * rear_factor;
+    dBR = -12.0f * rear_factor;
+
+    // ※もし「1kHzの強調」も同時にやりたい場合は、直列にもう一つEQを繋ぐのが理想ですが、
+    // まずはこの高音のノッチ（谷）を再現するだけでも、劇的に「後ろ感」が出ます。
+
+    // 後ろの音は耳介で遮られて少しマイルドに変化するため、Q値を少し低め（広め）にする
+    QL = (fL / 500.0f) * 0.5f;
+    QR = (fR / 500.0f) * 0.5f;
+
+  } else {
+    // 【前にいるとき】
+    // 前方からの音はクッキリ聴こえるため、高音域をわずかに強調するか、フラット(0dB)にする
+    float front_factor = 1.0f - (abs_rad / (M_PI / 2.0f));  // 1.0(真前) 〜 0.0(真横)
+
+    dBL = 2.0f * front_factor;  // 前方にいるときは少し高音をシャープに強調 (+2dBの山)
+    dBR = 2.0f * front_factor;
+
+    QL = fL / 500.0f;
+    QR = fR / 500.0f;
+  }
+
+  // 安全のためQ値が小さくなりすぎないようにガード
+  if (QL < 0.5f) QL = 0.5f;
+  if (QR < 0.5f) QR = 0.5f;
+
+  // 新しいピーキングEQ関数を呼び出し (AL, AR は dB値 として渡されます)
+  init_peaking_eq(&peL, fs, fL, QL, dBL);
+  init_peaking_eq(&peR, fs, fR, QR, dBR);
 
   //LR_volume_filter
   float pan = rad / (M_PI / 2.0f);
@@ -445,34 +476,35 @@ void delay_filter(int16_t* ptr, int size) {
   }
 }
 
-void init_bandstop(BandstopFilter* nf, float fs, float fc, float Q) {
+void init_peaking_eq(PeakingEQ* eq, float fs, float fc, float Q, float dB) {
 
-  float w0 = 2.0f * M_PI * fc / fs;
+  float A = powf(10.0f, dB / 40.0f);
+
+  float w0 = 2.0f * (float)M_PI * fc / fs;
   float alpha = sinf(w0) / (2.0f * Q);
 
-  float b0 = 1.0f;
+  float b0 = 1.0f + alpha * A;
   float b1 = -2.0f * cosf(w0);
-  float b2 = 1.0f;
-  float a0 = 1.0f + alpha;
+  float b2 = 1.0f - alpha * A;
+  float a0 = 1.0f + alpha / A;
   float a1 = -2.0f * cosf(w0);
-  float a2 = 1.0f - alpha;
+  float a2 = 1.0f - alpha / A;
 
-  nf->a0 = b0 / a0;
-  nf->a1 = b1 / a0;
-  nf->a2 = b2 / a0;
-  nf->b1 = a1 / a0;
-  nf->b2 = a2 / a0;
+  eq->a0 = b0 / a0;
+  eq->a1 = b1 / a0;
+  eq->a2 = b2 / a0;
+  eq->b1 = a1 / a0;
+  eq->b2 = a2 / a0;
 }
 
-float bandstop_process(BandstopFilter* nf, float x) {
+float peaking_eq_process(PeakingEQ* eq, float x) {
+  float y = eq->a0 * x + eq->a1 * eq->x1 + eq->a2 * eq->x2
+            - eq->b1 * eq->y1 - eq->b2 * eq->y2;
 
-  float y = nf->a0 * x + nf->a1 * nf->x1 + nf->a2 * nf->x2
-            - nf->b1 * nf->y1 - nf->b2 * nf->y2;
-
-  nf->x2 = nf->x1;
-  nf->x1 = x;
-  nf->y2 = nf->y1;
-  nf->y1 = y;
+  eq->x2 = eq->x1;
+  eq->x1 = x;
+  eq->y2 = eq->y1;
+  eq->y1 = y;
 
   return y;
 }
@@ -480,7 +512,7 @@ float bandstop_process(BandstopFilter* nf, float x) {
 
 
 
-void run_bandstop_filter(int16_t* ptr, int size) {
+void run_peaking_eq_filter(int16_t* ptr, int size) {
 
   int16_t* L = ptr;
   int16_t* R = ptr + 1;
@@ -490,8 +522,13 @@ void run_bandstop_filter(int16_t* ptr, int size) {
     float l = (float)(*L);
     float r = (float)(*R);
 
-    l = bandstop_process(&nfL, l);
-    r = bandstop_process(&nfR, r);
+    l = peaking_eq_process(&peL, l);
+    r = peaking_eq_process(&peR, r);
+
+    if (l > 32767.0f) l = 32767.0f;
+    if (l < -32768.0f) l = -32768.0f;
+    if (r > 32767.0f) r = 32767.0f;
+    if (r < -32768.0f) r = -32768.0f;
 
     *L = (int16_t)l;
     *R = (int16_t)r;
