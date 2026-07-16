@@ -187,6 +187,10 @@ void saito_filter(int16_t* ptr, int size) {
     delay(ptr, size);
   }
   if (processConfig.serial_send_enabled) {
+    Serial.print(-16384);       // Your absolute minimum visible Y-value
+    Serial.print(",");
+    Serial.print(16384);    // Your absolute maximum visible Y-value
+    Serial.print(",");
     Serial.println(*ptr);
   }
   if(processConfig.all_serial){
@@ -275,19 +279,19 @@ void soft_crip(int16_t* ptr, int size) {
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     if (*ls > thresholdplus) {
-      *ls = thresholdplus * 2;
+      *ls = thresholdplus;
     }
 
     if (*ls < thresholdminus) {
-      *ls = thresholdminus * 2;
+      *ls = thresholdminus;
     }
 
     if (*rs > thresholdplus) {
-      *rs = thresholdplus * 2;
+      *rs = thresholdplus;
     }
 
     if (*rs < thresholdminus) {
-      *rs = thresholdminus * 2;
+      *rs = thresholdminus;
     }
   }
 }
