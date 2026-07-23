@@ -42,6 +42,9 @@ static ProcessConfig processConfig;
 static const int32_t delay_buffer_size = frame_size * 100;
 static int16_t delayedBuffer[delay_buffer_size];
 static int accessPos = 0;
+static int16_t lpfy = 0;
+static float lpl0, lpl1, lpl2, lpl3, lpl4, lpl5, lpl6, lpl7, lpl8, lpl9;
+static float lpr0, lpr1, lpr2, lpr3, lpr4, lpr5, lpr6, lpr7, lpr8, lpr9;
 //---------------------------------------------------------------------
 //ohara_filterで使う変数↓-----------------
 
@@ -185,13 +188,14 @@ void saito_filter(int16_t* ptr, int size) {
     gain_amp(ptr, size);
   }
   if (processConfig.dynamics_modifier_enabled) {
-    dynamics_modifier(ptr, size);
+    //dynamics_modifier(ptr, size);
+    lpf(ptr, size, 0.1f);
   }
   if (processConfig.soft_crip_enabled) {
     soft_crip(ptr, size);
   }
   if (processConfig.delay_enabled) {
-    delay(ptr, size, 500, 0.25f);
+    delay(ptr, size, 500, 0.25f, 0.9f, &lpl9, &lpr9);
   }
   if (processConfig.echo_enabled) {
     pre_reverb(ptr, size);
@@ -308,22 +312,27 @@ void soft_crip(int16_t* ptr, int size) {
   }
 }
 
-void delay(int16_t* ptr, int size, int delay_time_ms, float mlt) {
+void delay(int16_t* ptr, int size, int delay_time_ms, float mlt, float a, float* lpStatel, float* lpStater) {
   int16_t* ls = ptr;
   int16_t* rs = ls + 1;
   int delay_buffer_diff = delay_time_ms * 96;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
     int16_t tmp;
+    int fb;
 
     int fetchPos = (((accessPos - delay_buffer_diff) % delay_buffer_size) + delay_buffer_size) % delay_buffer_size;
 
     tmp = *ls;
-    delayedBuffer[accessPos] = (tmp + delayedBuffer[fetchPos] * mlt) * 0.8f;
+    fb = delayedBuffer[fetchPos];
+    *lpStatel += a * (fb - *lpStatel);
+    delayedBuffer[accessPos] = tmp + *lpStatel * mlt;
     *ls = delayedBuffer[accessPos];
 
     tmp = *rs;
-    delayedBuffer[accessPos + 1] = (tmp + delayedBuffer[fetchPos + 1] * mlt) * 0.8f;
+    fb = delayedBuffer[fetchPos + 1];
+    *lpStater += a * (fb - *lpStater);
+    delayedBuffer[accessPos + 1] = tmp + *lpStater * mlt;
     *rs = delayedBuffer[accessPos + 1];
 
     accessPos += 2;
@@ -336,18 +345,31 @@ void delay(int16_t* ptr, int size, int delay_time_ms, float mlt) {
 }
 
 void pre_reverb(int16_t* ptr, int size) {
-  delay(ptr, size, 7, 0.15f);
-  delay(ptr, size, 19, 0.1f);
-  delay(ptr, size, 29, 0.07f);
-  delay(ptr, size, 37, 0.05f);
+  delay(ptr, size, 7, 0.15f, 0.1f, &lpl0, &lpr0);
+  delay(ptr, size, 19, 0.1f, 0.1f, &lpl1, &lpr1);
+  delay(ptr, size, 29, 0.07f, 0.1f, &lpl2, &lpr2);
+  delay(ptr, size, 37, 0.05f, 0.1f, &lpl3, &lpr3);
 }
 
 void echo(int16_t* ptr, int size) {
-  delay(ptr, size, 100, 0.3f);
-  delay(ptr, size, 170, 0.3f);
-  delay(ptr, size, 290, 0.3f);
-  delay(ptr, size, 370, 0.2f);
-  delay(ptr, size, 410, 0.2f);
+  delay(ptr, size, 100, 0.3f, 0.1f, &lpl4, &lpr4);
+  delay(ptr, size, 170, 0.3f, 0.1f, &lpl5, &lpr5);
+  delay(ptr, size, 290, 0.3f, 0.1f, &lpl6, &lpr6);
+  delay(ptr, size, 370, 0.2f, 0.1f, &lpl7, &lpr7);
+  delay(ptr, size, 410, 0.2f, 0.1f, &lpl8, &lpr8);
+}
+
+void lpf(int16_t* ptr, int size, float a) {
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    lpfy = lpfy + a * (*ls - lpfy);
+    *ls = lpfy;
+    *rs = lpfy;
+    ls += 2;
+    rs += 2;
+  }
 }
 
 void all_data_serial_send(int16_t* ptr, int size) {
