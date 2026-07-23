@@ -319,11 +319,11 @@ void delay(int16_t* ptr, int size, int delay_time_ms, float mlt) {
     int fetchPos = (((accessPos - delay_buffer_diff) % delay_buffer_size) + delay_buffer_size) % delay_buffer_size;
 
     tmp = *ls;
-    delayedBuffer[accessPos] = tmp + delayedBuffer[fetchPos] * mlt;
+    delayedBuffer[accessPos] = (tmp + delayedBuffer[fetchPos] * mlt) * 0.8f;
     *ls = delayedBuffer[accessPos];
 
     tmp = *rs;
-    delayedBuffer[accessPos + 1] = tmp + delayedBuffer[fetchPos + 1] * mlt;
+    delayedBuffer[accessPos + 1] = (tmp + delayedBuffer[fetchPos + 1] * mlt) * 0.8f;
     *rs = delayedBuffer[accessPos + 1];
 
     accessPos += 2;
