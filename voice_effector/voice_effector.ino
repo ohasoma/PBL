@@ -341,15 +341,22 @@ void ohara_filter(int16_t* ptr, int size) {
 
 void parameter_setting() {
   //座標計算
-  static float x_f = 510.0f;
-  static float y_f = 510.0f;
 
+  //デフォルトの中心座標　なぜか日によって変わる
+  static float x_b = 314.0f;
+  static float y_b = 330.0f;
+
+  static float x_f = x_b;
+  static float y_f = y_b;
+
+  //滑らかに変化させる
   x_f = 0.95f * x_f + 0.05f * adc_x;
   y_f = 0.95f * y_f + 0.05f * adc_y;
 
-  x = x_f - 510.0f + 10.0f;
-  y = -(y_f - 510.0f) - 43.0f;
+  x = x_f - x_b;
+  y = -(y_f - y_b);
 
+  //中心
   if (x < 15 && x > -15) x = 0;
   if (y < 15 && y > -15) y = 1;
 
@@ -818,7 +825,7 @@ void loop() {
   Serial.print(" ");
   Serial.print(r);
   Serial.print(" ");
-  Serial.println(n);
+  Serial.println(rad);
   /*
   Serial.print(" ");
   Serial.println(nL);
