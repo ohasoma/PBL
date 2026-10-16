@@ -32,7 +32,6 @@ struct ProcessConfig {
   bool serial_send_enabled;
   bool delay_enabled;
   bool ohara_serial;
-  bool all_serial;
   bool echo_enabled;
 };
 
@@ -134,11 +133,6 @@ void serial_recieve() {
       Serial.print("ohara_serial: ");
       Serial.println(processConfig.ohara_serial);
     }
-    if (data == "all_serial") {
-      processConfig.all_serial = !processConfig.all_serial;
-      Serial.print("all_serial: ");
-      Serial.println(processConfig.all_serial);
-    }
     if (data == "echo") {
       processConfig.echo_enabled = !processConfig.echo_enabled;
       Serial.print("echo: ");
@@ -158,8 +152,6 @@ void serial_recieve() {
       Serial.println(processConfig.serial_send_enabled);
       Serial.print("ohara_serial: ");
       Serial.println(processConfig.ohara_serial);
-      Serial.print("all_serial: ");
-      Serial.println(processConfig.all_serial);
       Serial.print("echo: ");
       Serial.println(processConfig.echo_enabled);
       Serial.println("-----------------------------");
@@ -195,7 +187,7 @@ void saito_filter(int16_t* ptr, int size) {
     soft_crip(ptr, size);
   }
   if (processConfig.delay_enabled) {
-    delay(ptr, size, 500, 0.25f, 0.9f, &lpl9, &lpr9);
+    delay(ptr, size, 750, 0.25f, 0.9f, &lpl9, &lpr9);
   }
   if (processConfig.echo_enabled) {
     pre_reverb(ptr, size);
@@ -209,9 +201,6 @@ void saito_filter(int16_t* ptr, int size) {
     Serial.println(*ptr);
   }
 
-  if (processConfig.all_serial) {
-    all_data_serial_send(ptr, size);
-  }
 }
 
 //-----------------------------加工処理の関数--------------------------------------
@@ -326,14 +315,18 @@ void delay(int16_t* ptr, int size, int delay_time_ms, float mlt, float a, float*
     tmp = *ls;
     fb = delayedBuffer[fetchPos];
     *lpStatel += a * (fb - *lpStatel);
-    delayedBuffer[accessPos] = tmp + *lpStatel * mlt;
-    *ls = delayedBuffer[accessPos];
+//    delayedBuffer[accessPos] = tmp + *lpStatel * mlt;
+//    *ls = delayedBuffer[accessPos];
+    delayedBuffer[accessPos] = tmp;
+    *ls = tmp + *lpStatel * mlt;
 
     tmp = *rs;
     fb = delayedBuffer[fetchPos + 1];
     *lpStater += a * (fb - *lpStater);
-    delayedBuffer[accessPos + 1] = tmp + *lpStater * mlt;
-    *rs = delayedBuffer[accessPos + 1];
+//    delayedBuffer[accessPos + 1] = tmp + *lpStater * mlt;
+//    *rs = delayedBuffer[accessPos + 1];
+    delayedBuffer[accessPos + 1] = tmp;
+    *rs = tmp + *lpStater * mlt;
 
     accessPos += 2;
 
@@ -352,11 +345,11 @@ void pre_reverb(int16_t* ptr, int size) {
 }
 
 void echo(int16_t* ptr, int size) {
-  delay(ptr, size, 100, 0.3f, 0.1f, &lpl4, &lpr4);
-  delay(ptr, size, 170, 0.3f, 0.1f, &lpl5, &lpr5);
-  delay(ptr, size, 290, 0.3f, 0.1f, &lpl6, &lpr6);
-  delay(ptr, size, 370, 0.2f, 0.1f, &lpl7, &lpr7);
-  delay(ptr, size, 410, 0.2f, 0.1f, &lpl8, &lpr8);
+  delay(ptr, size, 100, 0.1f, 0.1f, &lpl4, &lpr4);
+  delay(ptr, size, 170, 0.1f, 0.1f, &lpl5, &lpr5);
+  delay(ptr, size, 290, 0.1f, 0.1f, &lpl6, &lpr6);
+  delay(ptr, size, 370, 0.05f, 0.1f, &lpl7, &lpr7);
+  delay(ptr, size, 410, 0.05f, 0.1f, &lpl8, &lpr8);
 }
 
 void lpf(int16_t* ptr, int size, float a) {
@@ -860,7 +853,6 @@ void setup() {
   processConfig.serial_send_enabled = false;
   processConfig.delay_enabled = false;
   processConfig.ohara_serial = false;
-  processConfig.all_serial = false;
 }
 
 /**
