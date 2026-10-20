@@ -52,6 +52,7 @@ const int pin_y = A1;
 const float av = 0.00025;
 float x, y, r, rad;
 unsigned long current = 0;
+unsigned long current2 = 0;
 volatile int adc_x = 510;
 volatile int adc_y = 510;
 float nmax = 3.0f;
@@ -81,6 +82,7 @@ float fL, fR;
 float QL, QR;
 float dBL, dBR;
 float fs = 48000.0f;  // サンプリング周波数
+
 
 //--------------------------------------------------------------------------------
 //テンプレート
@@ -336,7 +338,7 @@ void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
   run_peaking_eq_filter(ptr, size);
-  delay_filter(ptr, size);
+  //delay_filter(ptr, size);
 }
 
 void parameter_setting() {
@@ -354,7 +356,7 @@ void parameter_setting() {
   y_f = 0.95f * y_f + 0.05f * adc_y;
 
   x = x_f - x_b;
-  y = -(y_f - y_b);
+  y = (y_f - y_b);
 
   //中心
   if (x < 15 && x > -15) x = 0;
@@ -363,7 +365,7 @@ void parameter_setting() {
   r = sqrtf(x * x + y * y);  //距離
   rad = atan2(x, y);         //角度
   //bias倍率nを計算
-  n = (279.0f * nmax) / (r * (nmax - 1.0f) + (280.0f - nmax));
+  n = (279.0f * nmax) / (r * (nmax - 1.0f) + (280.0f - nmax)) / 20;
 
   //flag 判定
   if (rad >= 0) {
@@ -415,36 +417,22 @@ void parameter_setting() {
   init_peaking_eq(&peR, fs, fR, QR, dBR);
 
   //LR_volume_filter
-  float pan = rad / (M_PI / 2.0f);
-  if (pan < -1) pan = -1;
-  if (pan > 1) pan = 1;
-  float k = 0.7f;  // 耳の遮蔽を表す係数
-  nL = n * (1.0f - k * max(0.0f, pan));
-  nR = n * (1.0f - k * max(0.0f, -pan));
-}
+  // rad: 0 = 正面, +π/2 = 右, ±π = 真後ろ, -π/2 = 左
+  float sin_val = sinf(rad); // 左右の成分 (-1:左, 0:正面/背面, +1:右)
+  float cos_val = cosf(rad); // 前後の成分 (+1:正面, -1:背面)
 
-void bias_volume_filter(int16_t* ptr, int size) {
+  float k = 0.7f; // 耳の遮蔽係数
 
-  int16_t* L = ptr;
-  int16_t* R = ptr + 1;
+  // 左右の遮蔽（右にあるときは左耳 nL を減衰、左にあるときは右耳 nR を減衰）
+  float panL = max(0.0f, sin_val);
+  float panR = max(0.0f, -sin_val);
 
-  for (int i = 0; i < size; i += 4) {
+  // 真後ろ（cos_val が負）のときは両耳を同等に扱うための係数
+  // （後ろからの音を少しこもらせたい場合は 0.3 などの係数を掛けます。減衰させないなら 1.0 のままでOK）
+  float back_attenuation = 1.0f - 0.2f * max(0.0f, -cos_val); 
 
-    int32_t l = (*L) * n;
-    int32_t r = (*R) * n;
-
-    if (l > 32767) l = 32767;
-    if (l < -32768) l = -32768;
-
-    if (r > 32767) r = 32767;
-    if (r < -32768) r = -32768;
-
-    *L = (int16_t)l;
-    *R = (int16_t)r;
-
-    L += 2;
-    R += 2;
-  }
+  nL = n * (1.0f - k * panL) * back_attenuation;
+  nR = n * (1.0f - k * panR) * back_attenuation;
 }
 
 void LR_volume_filter(int16_t* ptr, int size) {
@@ -470,6 +458,7 @@ void LR_volume_filter(int16_t* ptr, int size) {
   }
 }
 
+
 void delay_filter(int16_t* ptr, int size) {
 
   if (delay_sample < 0) delay_sample = 0;
@@ -478,7 +467,7 @@ void delay_filter(int16_t* ptr, int size) {
   int16_t* Lp = ptr;
   int16_t* Rp = ptr + 1;
 
-  for (int i = 0; i < size; i += 4) {
+  for (int i = 0; i < size; i += 2) {
 
     int16_t L = *Lp;
     int16_t R = *Rp;
@@ -532,7 +521,7 @@ void init_peaking_eq(PeakingEQ* eq, float fs, float fc, float Q, float dB) {
 
 float peaking_eq_process(PeakingEQ* eq, float x) {
   float y = eq->a0 * x + eq->a1 * eq->x1 + eq->a2 * eq->x2
-            - eq->b1 * eq->y1 - eq->b2 * eq->y2;
+          - eq->b1 * eq->y1 - eq->b2 * eq->y2;
 
   eq->x2 = eq->x1;
   eq->x1 = x;
@@ -541,9 +530,6 @@ float peaking_eq_process(PeakingEQ* eq, float x) {
 
   return y;
 }
-
-
-
 
 void run_peaking_eq_filter(int16_t* ptr, int size) {
 
@@ -585,7 +571,7 @@ void force_mono(int16_t* ptr, int size) {
 
 void main_filter(int16_t* ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
-  saito_filter(ptr, size);
+  //saito_filter(ptr, size);
   ohara_filter(ptr, size);
 }
 //--------------------------------------------------------------------------------
@@ -819,19 +805,22 @@ void setup() {
  */
 void loop() {
   if(processConfig.ohara_serial){
-  Serial.print(x);
-  Serial.print(" ");
-  Serial.print(y);
-  Serial.print(" ");
-  Serial.print(r);
-  Serial.print(" ");
-  Serial.println(rad);
-  /*
-  Serial.print(" ");
-  Serial.println(nL);
-  Serial.print(" ");
-  Serial.println(QL);
-  */
+    if (millis() - current2 > 1000){
+      Serial.print(x);
+      Serial.print(" ");
+      Serial.print(y);
+      Serial.print(" ");
+      Serial.print(nL);
+      Serial.print(" ");
+      Serial.println(nR);
+      /*
+      Serial.print(" ");
+      Serial.println(nL);
+      Serial.print(" ");
+      Serial.println(QL);
+      */
+      current2 = millis();
+    }
   }
 
   if (millis() - current > 100) {
@@ -873,3 +862,4 @@ exitCapturing:
   puts("Exit.");
   exit(1);
 }
+
