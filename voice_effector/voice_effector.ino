@@ -27,7 +27,7 @@ bool ErrEnd = false;
 
 struct ProcessConfig {
   bool gain_amp_enabled;
-  bool dynamics_modifier_enabled;
+  bool lpfilter_enabled;
   bool soft_crip_enabled;
   bool serial_send_enabled;
   bool delay_enabled;
@@ -108,10 +108,10 @@ void serial_recieve() {
       Serial.print("gain_amp: ");
       Serial.println(processConfig.gain_amp_enabled);
     }
-    if (data == "dynamics") {
-      processConfig.dynamics_modifier_enabled = !processConfig.dynamics_modifier_enabled;
+    if (data == "lpfilter") {
+      processConfig.lpfilter_enabled = !processConfig.lpfilter_enabled;
       Serial.print("dynaimcs_modifier: ");
-      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.println(processConfig.lpfilter_enabled);
     }
     if (data == "softcrip") {
       processConfig.soft_crip_enabled = !processConfig.soft_crip_enabled;
@@ -142,8 +142,8 @@ void serial_recieve() {
       Serial.println("-----------status------------");
       Serial.print("amp: ");
       Serial.println(processConfig.gain_amp_enabled);
-      Serial.print("dynamics: ");
-      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.print("lpfilter: ");
+      Serial.println(processConfig.lpfilter_enabled);
       Serial.print("softcrip: ");
       Serial.println(processConfig.soft_crip_enabled);
       Serial.print("delay: ");
@@ -179,8 +179,7 @@ void saito_filter(int16_t* ptr, int size) {
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
-  if (processConfig.dynamics_modifier_enabled) {
-    //dynamics_modifier(ptr, size);
+  if (processConfig.lpfilter_enabled) {
     lpf(ptr, size, 0.1f);
   }
   if (processConfig.soft_crip_enabled) {
@@ -315,16 +314,12 @@ void delay(int16_t* ptr, int size, int delay_time_ms, float mlt, float a, float*
     tmp = *ls;
     fb = delayedBuffer[fetchPos];
     *lpStatel += a * (fb - *lpStatel);
-//    delayedBuffer[accessPos] = tmp + *lpStatel * mlt;
-//    *ls = delayedBuffer[accessPos];
     delayedBuffer[accessPos] = tmp;
     *ls = tmp + *lpStatel * mlt;
 
     tmp = *rs;
     fb = delayedBuffer[fetchPos + 1];
     *lpStater += a * (fb - *lpStater);
-//    delayedBuffer[accessPos + 1] = tmp + *lpStater * mlt;
-//    *rs = delayedBuffer[accessPos + 1];
     delayedBuffer[accessPos + 1] = tmp;
     *rs = tmp + *lpStater * mlt;
 
@@ -628,7 +623,7 @@ void force_mono(int16_t* ptr, int size) {
 void main_filter(int16_t* ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
   saito_filter(ptr, size);
-  ohara_filter(ptr, size);
+  //ohara_filter(ptr, size);
 }
 //--------------------------------------------------------------------------------
 
@@ -847,7 +842,7 @@ void setup() {
   theFrontEnd->start();
 
   /* process config initialize*/
-  processConfig.dynamics_modifier_enabled = false;
+  processConfig.lpfilter_enabled = false;
   processConfig.soft_crip_enabled = false;
   processConfig.gain_amp_enabled = false;
   processConfig.serial_send_enabled = false;
