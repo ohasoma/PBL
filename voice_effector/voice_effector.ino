@@ -676,7 +676,7 @@ void force_mono(int16_t* ptr, int size) {
 void main_filter(int16_t* ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
   saito_filter(ptr, size);
-  //ohara_filter(ptr, size);
+  ohara_filter(ptr, size);
 }
 //--------------------------------------------------------------------------------
 
