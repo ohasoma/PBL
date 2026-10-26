@@ -5,7 +5,8 @@
 #include <arch/board/board.h>
 #include <Audio.h>
 #include <stdint.h>
-#define max_delay 4800  // 最大遅延 100ms (48kHz)
+#include <arm_math.h> 
+#define max_delay 48000  // 最大遅延 100ms (48kHz)
 
 //Utilities
 #include <math.h>
@@ -51,7 +52,7 @@ static float lpr0, lpr1, lpr2, lpr3, lpr4, lpr5, lpr6, lpr7, lpr8, lpr9;
 //--parameter_setting--
 const int pin_x = A0;
 const int pin_y = A1;
-const float av = 0.00025;
+const float av = 0.00025f;
 float x, y, r, rad;
 unsigned long current = 0;
 unsigned long current2 = 0;
@@ -383,6 +384,7 @@ void all_data_serial_send(int16_t* ptr, int size) {
   }
 }
 //--------------------------------------------------------------------------------
+
 void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
@@ -423,10 +425,14 @@ void parameter_setting() {
     flag = false;
   }
   //delay計算(ウッドワースの公式を使う)
-  delay_sample = static_cast<int>(av * (fabsf(rad) - sinf(fabsf(rad))) * 48000);
+  float abs_rad = fabsf(rad);
+  
+  float half_rad = abs_rad;
+  if (half_rad > 1.57) half_rad -= 1.57;
+  delay_sample = (int)(12.0f * (abs_rad - arm_sin_f32(abs_rad)));
+  delay_sample = constrain(delay_sample, -32768, 32767);
 
   //peaking_eq
-  float abs_rad = fabsf(rad);
 
   if (rad >= 0) {
     fR = 9000 - 4500 * sinf(abs_rad);
@@ -527,10 +533,12 @@ void delay_filter(int16_t* ptr, int size) {
     int16_t outL = L;
     int16_t outR = R;
 
-    if (flag) {
-      outL = delayBufL[readPos];
-    } else {
-      outR = delayBufR[readPos];
+    if (delay_sample > 0){
+      if (flag) {
+        outL = delayBufL[readPos];
+      } else {
+        outR = delayBufR[readPos];
+      }
     }
 
     *Lp = outL;
@@ -857,7 +865,7 @@ void loop() {
     if (millis() - current2 > 1000){
       Serial.print(x);
       Serial.print(" ");
-      Serial.print(y);
+      Serial.print("y");
       Serial.print(" ");
       Serial.print(nL);
       Serial.print(" ");
