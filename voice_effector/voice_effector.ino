@@ -28,16 +28,54 @@ bool ErrEnd = false;
 
 struct ProcessConfig {
   bool gain_amp_enabled;
-  bool dynamics_modifier_enabled;
+  bool lpfilter_enabled;
   bool soft_crip_enabled;
   bool serial_send_enabled;
   bool delay_enabled;
   bool ohara_serial;
-  bool all_serial;
   bool echo_enabled;
 };
 
 static ProcessConfig processConfig;
+
+constexpr int DELAY_TAPS = 1;
+constexpr int ECHO_TAPS = 5;
+constexpr int ECHO_AND_DELAY_TAPS = 10;
+
+struct DelayTap {
+  int delay_time_ms;
+  float mlt;
+  float a;
+  float lpL;
+  float lpR;
+};
+
+
+
+DelayTap delayTaps[DELAY_TAPS] = {
+  { 750, 0.5f, 0.9f, 0.0f, 0.0f }
+};
+
+DelayTap echoTaps[ECHO_TAPS] = {
+  { 100, 0.10f, 0.1f, 0.0f, 0.0f },
+  { 170, 0.10f, 0.1f, 0.0f, 0.0f },
+  { 290, 0.10f, 0.1f, 0.0f, 0.0f },
+  { 370, 0.05f, 0.1f, 0.0f, 0.0f },
+  { 410, 0.05f, 0.1f, 0.0f, 0.0f }
+};
+
+DelayTap echoAndDelayTaps[ECHO_AND_DELAY_TAPS] = {
+  { 750, 0.6f, 0.9f, 0.0f, 0.0f },
+  { 100, 0.2f, 0.1f, 0.0f, 0.0f },
+  { 170, 0.2f, 0.1f, 0.0f, 0.0f },
+  { 290, 0.10f, 0.1f, 0.0f, 0.0f },
+  { 370, 0.05f, 0.1f, 0.0f, 0.0f },
+  { 410, 0.05f, 0.1f, 0.0f, 0.0f },
+  { 470, 0.05f, 0.05f, 0.0f, 0.0f },
+  { 530, 0.05f, 0.05f, 0.0f, 0.0f },
+  { 610, 0.05f, 0.05f, 0.0f, 0.0f },
+  { 670, 0.05f, 0.05f, 0.0f, 0.0f }
+};
 
 //---------------------saito global variables--------------------------
 static const int32_t delay_buffer_size = frame_size * 100;
@@ -112,10 +150,10 @@ void serial_recieve() {
       Serial.print("gain_amp: ");
       Serial.println(processConfig.gain_amp_enabled);
     }
-    if (data == "dynamics") {
-      processConfig.dynamics_modifier_enabled = !processConfig.dynamics_modifier_enabled;
-      Serial.print("dynaimcs_modifier: ");
-      Serial.println(processConfig.dynamics_modifier_enabled);
+    if (data == "lpfilter") {
+      processConfig.lpfilter_enabled = !processConfig.lpfilter_enabled;
+      Serial.print("lpfilter: ");
+      Serial.println(processConfig.lpfilter_enabled);
     }
     if (data == "softcrip") {
       processConfig.soft_crip_enabled = !processConfig.soft_crip_enabled;
@@ -137,11 +175,6 @@ void serial_recieve() {
       Serial.print("ohara_serial: ");
       Serial.println(processConfig.ohara_serial);
     }
-    if (data == "all_serial") {
-      processConfig.all_serial = !processConfig.all_serial;
-      Serial.print("all_serial: ");
-      Serial.println(processConfig.all_serial);
-    }
     if (data == "echo") {
       processConfig.echo_enabled = !processConfig.echo_enabled;
       Serial.print("echo: ");
@@ -151,8 +184,8 @@ void serial_recieve() {
       Serial.println("-----------status------------");
       Serial.print("amp: ");
       Serial.println(processConfig.gain_amp_enabled);
-      Serial.print("dynamics: ");
-      Serial.println(processConfig.dynamics_modifier_enabled);
+      Serial.print("lpfilter: ");
+      Serial.println(processConfig.lpfilter_enabled);
       Serial.print("softcrip: ");
       Serial.println(processConfig.soft_crip_enabled);
       Serial.print("delay: ");
@@ -161,8 +194,6 @@ void serial_recieve() {
       Serial.println(processConfig.serial_send_enabled);
       Serial.print("ohara_serial: ");
       Serial.println(processConfig.ohara_serial);
-      Serial.print("all_serial: ");
-      Serial.println(processConfig.all_serial);
       Serial.print("echo: ");
       Serial.println(processConfig.echo_enabled);
       Serial.println("-----------------------------");
@@ -190,18 +221,17 @@ void saito_filter(int16_t* ptr, int size) {
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
-  if (processConfig.dynamics_modifier_enabled) {
-    //dynamics_modifier(ptr, size);
+  if (processConfig.lpfilter_enabled) {
     lpf(ptr, size, 0.1f);
   }
   if (processConfig.soft_crip_enabled) {
     soft_crip(ptr, size);
   }
   if (processConfig.delay_enabled) {
-    delay(ptr, size, 500, 0.25f, 0.9f, &lpl9, &lpr9);
+    delay(ptr, size, 0.5, delayTaps, DELAY_TAPS);
   }
   if (processConfig.echo_enabled) {
-    pre_reverb(ptr, size);
+    //pre_reverb(ptr, size);
     echo(ptr, size);
   }
   if (processConfig.serial_send_enabled) {
@@ -210,10 +240,6 @@ void saito_filter(int16_t* ptr, int size) {
     Serial.print(16384);  // Your absolute maximum visible Y-value
     Serial.print(",");
     Serial.println(*ptr);
-  }
-
-  if (processConfig.all_serial) {
-    all_data_serial_send(ptr, size);
   }
 }
 
@@ -315,28 +341,42 @@ void soft_crip(int16_t* ptr, int size) {
   }
 }
 
-void delay(int16_t* ptr, int size, int delay_time_ms, float mlt, float a, float* lpStatel, float* lpStater) {
+void delay(int16_t* ptr, int size, float original, DelayTap* taps, int count) {
   int16_t* ls = ptr;
   int16_t* rs = ls + 1;
-  int delay_buffer_diff = delay_time_ms * 96;
+  int16_t tmp;
+
+
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    int16_t tmp;
-    int fb;
 
-    int fetchPos = (((accessPos - delay_buffer_diff) % delay_buffer_size) + delay_buffer_size) % delay_buffer_size;
+    float delaySumL = 0;
+    float delaySumR = 0;
+
+
+    int16_t fb;
+
+    for (int i = 0; i < count; i++) {
+      int delay_buffer_diff = taps[i].delay_time_ms * 96;
+      int fetchPos = (((accessPos - delay_buffer_diff) % delay_buffer_size) + delay_buffer_size) % delay_buffer_size;
+
+      fb = delayedBuffer[fetchPos];
+      taps[i].lpL += taps[i].a * (fb - taps[i].lpL);
+      delaySumL += taps[i].lpL * taps[i].mlt;
+
+
+      fb = delayedBuffer[fetchPos + 1];
+      taps[i].lpR += taps[i].a * (fb - taps[i].lpR);
+      delaySumR += taps[i].lpR * taps[i].mlt;
+    }
 
     tmp = *ls;
-    fb = delayedBuffer[fetchPos];
-    *lpStatel += a * (fb - *lpStatel);
-    delayedBuffer[accessPos] = tmp + *lpStatel * mlt;
-    *ls = delayedBuffer[accessPos];
+    delayedBuffer[accessPos] = tmp + 0.1f * delaySumL;
+    *ls = original * tmp + (1.0f - original) * delaySumL;
 
     tmp = *rs;
-    fb = delayedBuffer[fetchPos + 1];
-    *lpStater += a * (fb - *lpStater);
-    delayedBuffer[accessPos + 1] = tmp + *lpStater * mlt;
-    *rs = delayedBuffer[accessPos + 1];
+    delayedBuffer[accessPos + 1] = tmp + 0.1f * delaySumR;
+    *rs = original * tmp + (1.0f - original) * delaySumR;
 
     accessPos += 2;
 
@@ -347,19 +387,19 @@ void delay(int16_t* ptr, int size, int delay_time_ms, float mlt, float a, float*
   }
 }
 
-void pre_reverb(int16_t* ptr, int size) {
-  delay(ptr, size, 7, 0.15f, 0.1f, &lpl0, &lpr0);
-  delay(ptr, size, 19, 0.1f, 0.1f, &lpl1, &lpr1);
-  delay(ptr, size, 29, 0.07f, 0.1f, &lpl2, &lpr2);
-  delay(ptr, size, 37, 0.05f, 0.1f, &lpl3, &lpr3);
-}
+// void pre_reverb(int16_t* ptr, int size) {
+//   delay(ptr, size, 7, 0.15f, 0.1f, &lpl0, &lpr0);
+//   delay(ptr, size, 19, 0.1f, 0.1f, &lpl1, &lpr1);
+//   delay(ptr, size, 29, 0.07f, 0.1f, &lpl2, &lpr2);
+//   delay(ptr, size, 37, 0.05f, 0.1f, &lpl3, &lpr3);
+// }
+
+// void echo(int16_t* ptr, int size) {
+//   delay(ptr, size, 0.3, echoTaps, ECHO_TAPS);
+// }
 
 void echo(int16_t* ptr, int size) {
-  delay(ptr, size, 100, 0.3f, 0.1f, &lpl4, &lpr4);
-  delay(ptr, size, 170, 0.3f, 0.1f, &lpl5, &lpr5);
-  delay(ptr, size, 290, 0.3f, 0.1f, &lpl6, &lpr6);
-  delay(ptr, size, 370, 0.2f, 0.1f, &lpl7, &lpr7);
-  delay(ptr, size, 410, 0.2f, 0.1f, &lpl8, &lpr8);
+  delay(ptr, size, 0.3, echoAndDelayTaps, ECHO_AND_DELAY_TAPS);
 }
 
 void lpf(int16_t* ptr, int size, float a) {
@@ -809,7 +849,7 @@ void setup() {
   memset(proc_buffer, 0, proc_size);
 
   //---------------------------------------------------------
-  memset(delayedBuffer, 0, delay_buffer_size);
+  memset(delayedBuffer, 0, sizeof(delayedBuffer));
   //---------------------------------------------------------
 
   /* Begin objects */
@@ -848,13 +888,12 @@ void setup() {
   theFrontEnd->start();
 
   /* process config initialize*/
-  processConfig.dynamics_modifier_enabled = false;
+  processConfig.lpfilter_enabled = false;
   processConfig.soft_crip_enabled = false;
   processConfig.gain_amp_enabled = false;
   processConfig.serial_send_enabled = false;
   processConfig.delay_enabled = false;
   processConfig.ohara_serial = false;
-  processConfig.all_serial = false;
 }
 
 /**
