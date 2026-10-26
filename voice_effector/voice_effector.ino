@@ -39,7 +39,7 @@ static ProcessConfig processConfig;
 
 constexpr int DELAY_TAPS = 1;
 constexpr int ECHO_TAPS = 5;
-constexpr int ECHO_AND_DELAY_TAPS = 10;
+constexpr int ECHO_AND_DELAY_TAPS = 13;
 
 struct DelayTap {
   int delay_time_ms;
@@ -64,7 +64,10 @@ DelayTap echoTaps[ECHO_TAPS] = {
 };
 
 DelayTap echoAndDelayTaps[ECHO_AND_DELAY_TAPS] = {
-  { 750, 0.6f, 0.9f, 0.0f, 0.0f },
+  { 510, 0.4f, 0.5f, 0.0f, 0.0f },
+  { 750, 0.3f, 0.5f, 0.0f, 0.0f },
+  { 830, 0.2f, 0.5f, 0.0f, 0.0f },
+
   { 100, 0.2f, 0.1f, 0.0f, 0.0f },
   { 170, 0.2f, 0.1f, 0.0f, 0.0f },
   { 290, 0.10f, 0.1f, 0.0f, 0.0f },
@@ -73,7 +76,8 @@ DelayTap echoAndDelayTaps[ECHO_AND_DELAY_TAPS] = {
   { 470, 0.05f, 0.05f, 0.0f, 0.0f },
   { 530, 0.05f, 0.05f, 0.0f, 0.0f },
   { 610, 0.05f, 0.05f, 0.0f, 0.0f },
-  { 670, 0.05f, 0.05f, 0.0f, 0.0f }
+  { 670, 0.05f, 0.05f, 0.0f, 0.0f },
+  { 710, 0.05f, 0.05f, 0.0f, 0.0f }
 };
 
 //---------------------saito global variables--------------------------
@@ -214,12 +218,12 @@ void signal_process(int16_t* ptr, int size) {
 //--------------------------------------------------------------------------------
 void saito_filter(int16_t* ptr, int size) {
   //加工処理
-  avoid_noise(ptr, size);
+  //avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
     gain_amp(ptr, size);
   }
   if (processConfig.lpfilter_enabled) {
-    lpf(ptr, size, 0.1f);
+    lpf(ptr, size, 0.6f);
   }
   if (processConfig.soft_crip_enabled) {
     soft_crip(ptr, size);
@@ -425,7 +429,7 @@ void ohara_filter(int16_t* ptr, int size) {
   parameter_setting();
   LR_volume_filter(ptr, size);
   run_peaking_eq_filter(ptr, size);
-  delay_filter(ptr, size);
+  //delay_filter(ptr, size);
 }
 
 void parameter_setting() {
@@ -480,12 +484,12 @@ void parameter_setting() {
     dBL = -12.0f * rear_factor;
     dBR = -12.0f * rear_factor;
 
-  
+
     QL = (fL / 500.0f) * 0.5f;
     QR = (fR / 500.0f) * 0.5f;
 
   } else {
-    
+
     float front_factor = 1.0f - (abs_rad / (M_PI / 2.0f));
 
     dBL = 2.0f * front_factor;
@@ -906,15 +910,15 @@ void setup() {
  * @brief audio loop
  */
 void loop() {
-  if(processConfig.ohara_serial){
-  Serial.print(x);
-  Serial.print(" ");
-  Serial.print(y);
-  Serial.print(" ");
-  Serial.print(r);
-  Serial.print(" ");
-  Serial.println(rad);
-  /*
+  if (processConfig.ohara_serial) {
+    Serial.print(x);
+    Serial.print(" ");
+    Serial.print(y);
+    Serial.print(" ");
+    Serial.print(r);
+    Serial.print(" ");
+    Serial.println(rad);
+    /*
   Serial.print(" ");
   Serial.println(nL);
   Serial.print(" ");
