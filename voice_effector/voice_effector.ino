@@ -223,7 +223,7 @@ void saito_filter(int16_t* ptr, int size) {
   //加工処理
   //avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
-    gain_amp(ptr, size);
+    bitcrusher(ptr, size, 8);
   }
   if (processConfig.lpfilter_enabled) {
     lpf(ptr, size, 0.6f);
@@ -258,7 +258,7 @@ void avoid_noise(int16_t* ptr, int size) {
     s += 1;
   }
 
-  if (peak > 1500) {
+  if (peak > 100) {
     return;
   } else {
     s = ptr;
@@ -283,7 +283,7 @@ void gain_amp(int16_t* ptr, int size) {
     rs += 2;
   }
 
-  if (peak < 1500) return;
+  if (peak < 300) return;
 
   float amp = gain_std / peak;
   ls = ptr;
@@ -321,8 +321,8 @@ void dynamics_modifier(int16_t* ptr, int size) {
 }
 
 void soft_crip(int16_t* ptr, int size) {
-  int16_t thresholdplus = 8000;
-  int16_t thresholdminus = -8000;
+  int16_t thresholdplus = 500;
+  int16_t thresholdminus = -500;
   int16_t* ls = ptr;
   int16_t* rs = ls + 1;
 
@@ -417,6 +417,18 @@ void lpf(int16_t* ptr, int size, float a) {
     ls += 2;
     rs += 2;
   }
+}
+
+void bitcrusher(int16_t* ptr, int size, int step) {
+  int16_t* ls = ptr;
+  int16_t* rs = ls + 1;
+
+  for (int32_t cnt = 0; cnt < size; cnt += 4) {
+    *ls = (*ls / step) * step;
+    *rs = (*rs / step) * step;
+    ls += 2;
+    rs += 2;
+  }  
 }
 
 void all_data_serial_send(int16_t* ptr, int size) {
