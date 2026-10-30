@@ -5,7 +5,7 @@
 #include <arch/board/board.h>
 #include <Audio.h>
 #include <stdint.h>
-#include <arm_math.h> 
+#include <arm_math.h>
 #define max_delay 48000  // 最大遅延 100ms (48kHz)
 
 //Utilities
@@ -34,13 +34,15 @@ struct ProcessConfig {
   bool delay_enabled;
   bool ohara_serial;
   bool echo_enabled;
+  bool saito;
+  bool ohara;
 };
 
 static ProcessConfig processConfig;
 
 constexpr int DELAY_TAPS = 1;
 constexpr int ECHO_TAPS = 5;
-constexpr int ECHO_AND_DELAY_TAPS = 13;
+constexpr int ECHO_AND_DELAY_TAPS = 8;
 
 struct DelayTap {
   int delay_time_ms;
@@ -67,17 +69,11 @@ DelayTap echoTaps[ECHO_TAPS] = {
 DelayTap echoAndDelayTaps[ECHO_AND_DELAY_TAPS] = {
   { 510, 0.4f, 0.5f, 0.0f, 0.0f },
   { 750, 0.3f, 0.5f, 0.0f, 0.0f },
-  { 830, 0.2f, 0.5f, 0.0f, 0.0f },
-
   { 100, 0.2f, 0.1f, 0.0f, 0.0f },
   { 170, 0.2f, 0.1f, 0.0f, 0.0f },
-  { 290, 0.10f, 0.1f, 0.0f, 0.0f },
   { 370, 0.05f, 0.1f, 0.0f, 0.0f },
-  { 410, 0.05f, 0.1f, 0.0f, 0.0f },
   { 470, 0.05f, 0.05f, 0.0f, 0.0f },
-  { 530, 0.05f, 0.05f, 0.0f, 0.0f },
   { 610, 0.05f, 0.05f, 0.0f, 0.0f },
-  { 670, 0.05f, 0.05f, 0.0f, 0.0f },
   { 710, 0.05f, 0.05f, 0.0f, 0.0f }
 };
 
@@ -202,6 +198,16 @@ void serial_recieve() {
       Serial.println(processConfig.echo_enabled);
       Serial.println("-----------------------------");
     }
+    if (data == "saito") {
+      processConfig.saito = !processConfig.saito;
+      Serial.print("saito: ");
+      Serial.println(processConfig.saito);
+    }
+    if (data == "ohara") {
+      processConfig.ohara = !processConfig.ohara;
+      Serial.print("ohara: ");
+      Serial.println(processConfig.ohara);
+    }
   }
 }
 
@@ -223,7 +229,7 @@ void saito_filter(int16_t* ptr, int size) {
   //加工処理
   //avoid_noise(ptr, size);
   if (processConfig.gain_amp_enabled) {
-    bitcrusher(ptr, size, 8);
+    bitcrusher(ptr, size, 64);
   }
   if (processConfig.lpfilter_enabled) {
     lpf(ptr, size, 0.6f);
@@ -375,11 +381,11 @@ void delay(int16_t* ptr, int size, float original, DelayTap* taps, int count) {
     }
 
     tmp = *ls;
-    delayedBuffer[accessPos] = tmp + 0.1f * delaySumL;
+    delayedBuffer[accessPos] = tmp /*+ 0.1f * delaySumL*/;
     *ls = original * tmp + (1.0f - original) * delaySumL;
 
     tmp = *rs;
-    delayedBuffer[accessPos + 1] = tmp + 0.1f * delaySumR;
+    delayedBuffer[accessPos + 1] = tmp /*+ 0.1f * delaySumR:?*/;
     *rs = original * tmp + (1.0f - original) * delaySumR;
 
     accessPos += 2;
@@ -424,11 +430,19 @@ void bitcrusher(int16_t* ptr, int size, int step) {
   int16_t* rs = ls + 1;
 
   for (int32_t cnt = 0; cnt < size; cnt += 4) {
-    *ls = (*ls / step) * step;
-    *rs = (*rs / step) * step;
+    if (*ls >= 0) {
+      *ls = (*ls / step) * step;
+    } else {
+      *ls = ((*ls * -1) / step) * step * -1;
+    }
+    if (*rs >= 0) {
+      *rs = (*rs / step) * step;
+    } else {
+      *rs = ((*rs * -1) / step) * step * -1;
+    }
     ls += 2;
     rs += 2;
-  }  
+  }
 }
 
 void all_data_serial_send(int16_t* ptr, int size) {
@@ -482,7 +496,7 @@ void parameter_setting() {
   }
   //delay計算(ウッドワースの公式を使う)
   float abs_rad = fabsf(rad);
-  
+
   float half_rad = abs_rad;
   if (half_rad > 1.57) half_rad -= 1.57;
   delay_sample = (int)(12.0f * (abs_rad - arm_sin_f32(abs_rad)));
@@ -529,10 +543,10 @@ void parameter_setting() {
 
   //LR_volume_filter
   // rad: 0 = 正面, +π/2 = 右, ±π = 真後ろ, -π/2 = 左
-  float sin_val = sinf(rad); // 左右の成分 (-1:左, 0:正面/背面, +1:右)
-  float cos_val = cosf(rad); // 前後の成分 (+1:正面, -1:背面)
+  float sin_val = sinf(rad);  // 左右の成分 (-1:左, 0:正面/背面, +1:右)
+  float cos_val = cosf(rad);  // 前後の成分 (+1:正面, -1:背面)
 
-  float k = 0.7f; // 耳の遮蔽係数
+  float k = 0.7f;  // 耳の遮蔽係数
 
   // 左右の遮蔽（右にあるときは左耳 nL を減衰、左にあるときは右耳 nR を減衰）
   float panL = max(0.0f, sin_val);
@@ -540,7 +554,7 @@ void parameter_setting() {
 
   // 真後ろ（cos_val が負）のときは両耳を同等に扱うための係数
   // （後ろからの音を少しこもらせたい場合は 0.3 などの係数を掛けます。減衰させないなら 1.0 のままでOK）
-  float back_attenuation = 1.0f - 0.2f * max(0.0f, -cos_val); 
+  float back_attenuation = 1.0f - 0.2f * max(0.0f, -cos_val);
 
   nL = n * (1.0f - k * panL) * back_attenuation;
   nR = n * (1.0f - k * panR) * back_attenuation;
@@ -589,7 +603,7 @@ void delay_filter(int16_t* ptr, int size) {
     int16_t outL = L;
     int16_t outR = R;
 
-    if (delay_sample > 0){
+    if (delay_sample > 0) {
       if (flag) {
         outL = delayBufL[readPos];
       } else {
@@ -634,7 +648,7 @@ void init_peaking_eq(PeakingEQ* eq, float fs, float fc, float Q, float dB) {
 
 float peaking_eq_process(PeakingEQ* eq, float x) {
   float y = eq->a0 * x + eq->a1 * eq->x1 + eq->a2 * eq->x2
-          - eq->b1 * eq->y1 - eq->b2 * eq->y2;
+            - eq->b1 * eq->y1 - eq->b2 * eq->y2;
 
   eq->x2 = eq->x1;
   eq->x1 = x;
@@ -684,8 +698,12 @@ void force_mono(int16_t* ptr, int size) {
 
 void main_filter(int16_t* ptr, int size) {
   force_mono(ptr, size);  //LをRにコピー
-  //saito_filter(ptr, size);
-  ohara_filter(ptr, size);
+  if (processConfig.saito) {
+    saito_filter(ptr, size);
+  }
+  if (processConfig.ohara) {
+    ohara_filter(ptr, size);
+  }
 }
 //--------------------------------------------------------------------------------
 
@@ -916,8 +934,8 @@ void setup() {
  * @brief audio loop
  */
 void loop() {
-  if(processConfig.ohara_serial){
-    if (millis() - current2 > 1000){
+  if (processConfig.ohara_serial) {
+    if (millis() - current2 > 1000) {
       Serial.print(x);
       Serial.print(" ");
       Serial.print("y");
@@ -974,4 +992,3 @@ exitCapturing:
   puts("Exit.");
   exit(1);
 }
-
